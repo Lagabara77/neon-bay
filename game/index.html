@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neon Bay — Open-World Crime</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="./styles.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+</head>
+<body>
+<div id="app">
+  <canvas id="game"></canvas>
+  <div id="hud" class="hidden">
+    <div id="top-left">
+      <div id="health-wrap"><div id="health-bar"></div><span id="health-text">100</span></div>
+      <div id="money">$<span id="money-text">250</span></div>
+      <div id="wanted"></div>
+    </div>
+    <div id="objective" class="hidden"><span id="objective-title"></span><span id="objective-text"></span></div>
+    <div id="speedo" class="hidden"><span id="speed-text">0</span><small>mph</small></div>
+    <canvas id="minimap" width="180" height="180"></canvas>
+    <div id="hint">WASD move &middot; Shift run &middot; E enter/exit car &middot; F punch &middot; Q shoot &middot; R reload &middot; M mute &middot; Esc pause</div>
+    <div id="banner" class="hidden"></div>
+    <div id="toast" class="hidden"></div>
+  </div>
+  <div id="title" class="screen">
+    <h1>NEON<span>BAY</span></h1>
+    <p class="tag">An open-world crime story &middot; dusk in the Bay</p>
+    <p class="story">You are <b>Jax Marlowe</b>, wheelman for Mara Voss and her crew.<br>Steal cars. Dodge the law. Get paid.</p>
+    <div class="buttons">
+      <button id="btn-new">Start New Game</button>
+      <button id="btn-continue">Continue</button>
+    </div>
+    <p class="controls">WASD move &middot; mouse drag orbit &middot; Shift run &middot; E car &middot; F punch &middot; Q shoot &middot; R reload &middot; M mute &middot; Esc pause</p>
+    <p class="foot">Original game &middot; no affiliation with any real city or franchise</p>
+  </div>
+  <div id="pause" class="screen hidden">
+    <h2>PAUSED</h2>
+    <div class="buttons"><button id="btn-resume">Resume</button><button id="btn-quit">Save &amp; Quit to Title</button></div>
+  </div>
+  <div id="busted" class="screen hidden">
+    <h2 id="busted-title">BUSTED</h2>
+    <p id="busted-text"></p>
+    <div class="buttons"><button id="btn-respawn">Respawn</button></div>
+  </div>
+  <div id="mission-done" class="screen hidden">
+    <h2 id="md-title">MISSION COMPLETE</h2>
+    <p id="md-text"></p>
+    <div class="buttons"><button id="btn-md">Continue</button></div>
+  </div>
+</div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

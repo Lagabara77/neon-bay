@@ -1,0 +1,193 @@
+// Neon Bay city: 8x8 blocks over ~400x400 m, roads between blocks, harbour on the east.
+// Builds the Three.js scene and returns colliders + road data the gameplay uses.
+import * as THREE from 'three';
+import { mulberry32 } from './util.js';
+
+export const CITY = {
+  half: 200, block: 40, road: 10, pitch: 50, // block 40 + road 10 = 50 pitch, 8 blocks = 400
+  waterX: 185, // east of this is harbour water
+};
+
+export function buildCity(scene, seed) {
+  const rand = mulberry32(seed);
+  const colliders = []; // {minX,maxX,minZ,maxZ}
+  const roadLines = []; // x or z coords of road centrelines
+  for (let i = 0; i <= 8; i++) roadLines.push(-200 + i * 50 + 45); // roads at block edges: -200+... compute below
+  // Recompute cleanly: block i spans [-200+i*50, -200+i*50+40]; road centre between blocks at -200+i*50-5
+  roadLines.length = 0;
+  for (let i = 0; i <= 8; i++) roadLines.push(-200 + i * 50 - 5);
+
+  // --- sky: gradient dome + fog ---
+  scene.background = new THREE.Color(0x2a1548);
+  scene.fog = new THREE.Fog(0x3a1e5e, 120, 520);
+  const skyGeo = new THREE.SphereGeometry(600, 16, 12);
+  const skyMat = new THREE.MeshBasicMaterial({ color: 0xff7a3d, side: THREE.BackSide, fog: false });
+  const sky = new THREE.Mesh(skyGeo, skyMat);
+  scene.add(sky);
+  // sun disc low on the horizon (west)
+  const sun = new THREE.Mesh(new THREE.CircleGeometry(28, 24), new THREE.MeshBasicMaterial({ color: 0xffd23d, fog: false }));
+  sun.position.set(-420, 55, -120); sun.lookAt(0, 40, 0); scene.add(sun);
+
+  // --- lights ---
+  scene.add(new THREE.AmbientLight(0x8a6bb8, 0.85));
+  const dir = new THREE.DirectionalLight(0xff9a5c, 1.4);
+  dir.position.set(-180, 140, 60); scene.add(dir);
+  const hemi = new THREE.HemisphereLight(0x7a5cff, 0x2a1a3a, 0.5); scene.add(hemi);
+
+  // --- ground ---
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(520, 520), new THREE.MeshLambertMaterial({ color: 0x2e2a33 }));
+  ground.rotation.x = -Math.PI / 2; ground.position.y = 0; scene.add(ground);
+  // sidewalks: lighter slabs per block
+  const walkMat = new THREE.MeshLambertMaterial({ color: 0x4a4552 });
+  const walkGeo = new THREE.BoxGeometry(44, 0.15, 44);
+  // roads: dark strips
+  const roadMat = new THREE.MeshLambertMaterial({ color: 0x1c1a20 });
+  const roadGeoH = new THREE.PlaneGeometry(400, 10);
+  const roadGeoV = new THREE.PlaneGeometry(10, 400);
+  for (const c of roadLines) {
+    const rh = new THREE.Mesh(roadGeoH, roadMat); rh.rotation.x = -Math.PI / 2; rh.position.set(0, 0.06, c); scene.add(rh);
+    const rv = new THREE.Mesh(roadGeoV, roadMat); rv.rotation.x = -Math.PI / 2; rv.position.set(c, 0.06, 0); scene.add(rv);
+    // centre dashes
+    const dashMat = new THREE.MeshBasicMaterial({ color: 0xd8c95a });
+    const dashGeo = new THREE.PlaneGeometry(3, 0.5);
+    for (let d = -190; d < 200; d += 14) {
+      const dh = new THREE.Mesh(dashGeo, dashMat); dh.rotation.x = -Math.PI / 2; dh.position.set(d, 0.08, c); scene.add(dh);
+      const dv = new THREE.Mesh(dashGeo, dashMat); dv.rotation.x = -Math.PI / 2; dv.rotation.z = Math.PI / 2; dv.position.set(c, 0.08, d); scene.add(dv);
+    }
+  }
+
+  // --- buildings: shared geometries/materials, emissive windows via texture ---
+  const winCanvas = document.createElement('canvas'); winCanvas.width = 64; winCanvas.height = 128;
+  const wc = winCanvas.getContext('2d');
+  wc.fillStyle = '#241d33'; wc.fillRect(0, 0, 64, 128);
+  const litCols = ['#ffd23d', '#ff9a5c', '#7de3ff', '#ff7ad9'];
+  for (let y = 6; y < 122; y += 12) for (let x = 6; x < 58; x += 10) {
+    wc.fillStyle = rand() < 0.55 ? litCols[Math.floor(rand() * litCols.length)] : '#14101e';
+    wc.fillRect(x, y, 6, 8);
+  }
+  const winTex = new THREE.CanvasTexture(winCanvas);
+  const bldgMats = [0x3a3450, 0x4a2f4d, 0x2f3d5c, 0x503a2e, 0x37304a, 0x5c2f3d].map(c =>
+    new THREE.MeshLambertMaterial({ color: c, emissive: 0xffffff, emissiveMap: winTex, emissiveIntensity: 0.55 }));
+  const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+  const roofMat = new THREE.MeshLambertMaterial({ color: 0x1a1622 });
+
+  const buildings = [];
+  for (let bx = 0; bx < 8; bx++) for (let bz = 0; bz < 8; bz++) {
+    const x0 = -200 + bx * 50, z0 = -200 + bz * 50;
+    const isHarbourBlock = x0 > 160; // east edge blocks are the harbour strip
+    if (isHarbourBlock) continue;
+    // 1-3 buildings per block, placed on a sub-grid
+    const n = 1 + Math.floor(rand() * 3);
+    for (let k = 0; k < n; k++) {
+      const w = 12 + rand() * 14, d = 12 + rand() * 14, h = 8 + rand() * 34;
+      const cx = x0 + 8 + rand() * (40 - 8 - w), cz = z0 + 8 + rand() * (40 - 8 - d);
+      const m = new THREE.Mesh(boxGeo, bldgMats[Math.floor(rand() * bldgMats.length)]);
+      m.scale.set(w, h, d); m.position.set(cx + w / 2 - 20 + 20, h / 2, cz + d / 2 - 20 + 20);
+      // position fix: cx is offset within block; use absolute:
+      m.position.set(x0 + (cx - x0) + w / 2, h / 2, z0 + (cz - z0) + d / 2);
+      scene.add(m);
+      const roof = new THREE.Mesh(boxGeo, roofMat);
+      roof.scale.set(w + 0.6, 0.5, d + 0.6); roof.position.set(m.position.x, h + 0.25, m.position.z); scene.add(roof);
+      colliders.push({ minX: m.position.x - w / 2, maxX: m.position.x + w / 2, minZ: m.position.z - d / 2, maxZ: m.position.z + d / 2 });
+      buildings.push(m);
+      // rooftop neon sign on tall towers
+      if (h > 30 && rand() < 0.5) {
+        const sign = new THREE.Mesh(new THREE.BoxGeometry(w * 0.5, 1.2, 0.3),
+          new THREE.MeshBasicMaterial({ color: [0xff2d78, 0x00e5ff, 0xffd23d][Math.floor(rand() * 3)] }));
+        sign.position.set(m.position.x, h + 1.2, m.position.z); scene.add(sign);
+      }
+    }
+    // sidewalk slab
+    const walk = new THREE.Mesh(walkGeo, walkMat); walk.position.set(x0 + 20, 0.02, z0 + 20); scene.add(walk);
+  }
+
+  // --- harbour: water plane + pier + containers + crane ---
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(120, 420), new THREE.MeshLambertMaterial({ color: 0x0e4a6e }));
+  water.rotation.x = -Math.PI / 2; water.position.set(245, 0.05, 0); scene.add(water);
+  const pierMat = new THREE.MeshLambertMaterial({ color: 0x5c4a33 });
+  const pier = new THREE.Mesh(new THREE.BoxGeometry(24, 1, 380), pierMat);
+  pier.position.set(196, 0.5, 0); scene.add(pier);
+  // No collider on the pier: cars are clamped to x < 182, and the player must be able to
+  // walk the pier to deliver the Harbor Run package.
+  const contCols = [0xd83d2e, 0x2e7dd8, 0x3dd86e, 0xd8a32e];
+  const contGeo = new THREE.BoxGeometry(10, 3.4, 3.4);
+  for (let i = 0; i < 14; i++) {
+    const c = new THREE.Mesh(contGeo, new THREE.MeshLambertMaterial({ color: contCols[i % 4] }));
+    const px = 192 + (i % 2) * 8, pz = -160 + Math.floor(i / 2) * 48 + rand() * 8;
+    c.position.set(px, 1.7 + (i % 3 === 0 ? 3.4 : 0), pz); scene.add(c);
+    colliders.push({ minX: px - 5, maxX: px + 5, minZ: pz - 1.7, maxZ: pz + 1.7 });
+  }
+
+  // --- street lamps along roads ---
+  const poleGeo = new THREE.CylinderGeometry(0.12, 0.12, 6, 6);
+  const poleMat = new THREE.MeshLambertMaterial({ color: 0x222226 });
+  const lampGeo = new THREE.SphereGeometry(0.5, 8, 6);
+  const lampMat = new THREE.MeshBasicMaterial({ color: 0xffe9a8 });
+  const lampLightMat = new THREE.MeshBasicMaterial({ color: 0xffd23d, transparent: true, opacity: 0.15 });
+  for (const c of roadLines) for (let d = -180; d <= 180; d += 50) {
+    for (const [lx, lz] of [[c + 6, d], [c - 6, d + 25]]) {
+      if (Math.abs(lx) > 195 || Math.abs(lz) > 195) continue;
+      const pole = new THREE.Mesh(poleGeo, poleMat); pole.position.set(lx, 3, lz); scene.add(pole);
+      const lamp = new THREE.Mesh(lampGeo, lampMat); lamp.position.set(lx, 6.2, lz); scene.add(lamp);
+      const glow = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6), lampLightMat); glow.position.set(lx, 6.2, lz); scene.add(glow);
+    }
+  }
+
+  // --- traffic lights (decorative) at a few intersections ---
+  const tlPole = new THREE.CylinderGeometry(0.1, 0.1, 4.5, 6);
+  const tlBox = new THREE.BoxGeometry(0.7, 1.6, 0.7);
+  for (const [ix, iz] of [[-55, -55], [45, -5], [-5, 95], [95, 45]]) {
+    const p = new THREE.Mesh(tlPole, poleMat); p.position.set(ix + 6, 2.25, iz + 6); scene.add(p);
+    const b = new THREE.Mesh(tlBox, new THREE.MeshLambertMaterial({ color: 0x111114 }));
+    b.position.set(ix + 6, 4.8, iz + 6); scene.add(b);
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), new THREE.MeshBasicMaterial({ color: (ix + iz) % 2 ? 0xff3b30 : 0x35d83d }));
+    dot.position.set(ix + 6, 5.1, iz + 6.35); scene.add(dot);
+  }
+
+  // --- props: trees, hydrants, benches ---
+  const trunkGeo = new THREE.CylinderGeometry(0.25, 0.35, 2.4, 6);
+  const trunkMat = new THREE.MeshLambertMaterial({ color: 0x4a2f1d });
+  const leafGeo = new THREE.ConeGeometry(1.8, 4, 7);
+  const leafMat = new THREE.MeshLambertMaterial({ color: 0x2e6e3a });
+  const hydGeo = new THREE.CylinderGeometry(0.3, 0.35, 0.9, 8);
+  const hydMat = new THREE.MeshLambertMaterial({ color: 0xd83d2e });
+  const benchGeo = new THREE.BoxGeometry(2.4, 0.5, 0.8);
+  const benchMat = new THREE.MeshLambertMaterial({ color: 0x6e4a2a });
+  for (let i = 0; i < 60; i++) {
+    const bx = Math.floor(rand() * 8), bz = Math.floor(rand() * 8);
+    const x0 = -200 + bx * 50, z0 = -200 + bz * 50;
+    const px = x0 + 2 + rand() * 36, pz = z0 + 2 + rand() * 36;
+    if (px > 175) continue;
+    const kind = rand();
+    if (kind < 0.5) {
+      const t = new THREE.Mesh(trunkGeo, trunkMat); t.position.set(px, 1.2, pz); scene.add(t);
+      const l = new THREE.Mesh(leafGeo, leafMat); l.position.set(px, 4, pz); scene.add(l);
+    } else if (kind < 0.75) {
+      const h = new THREE.Mesh(hydGeo, hydMat); h.position.set(px, 0.45, pz); scene.add(h);
+    } else {
+      const b = new THREE.Mesh(benchGeo, benchMat); b.position.set(px, 0.5, pz); b.rotation.y = rand() * Math.PI; scene.add(b);
+    }
+  }
+
+  // --- road loops for AI traffic: rectangles along road centrelines ---
+  const loops = [];
+  for (const c of [-155, -105, -55, -5, 45, 95, 145]) {
+    loops.push([{ x: c, z: -175 }, { x: c, z: 175 }, { x: c + 0, z: 175 }]); // vertical runs handled by rect loop below
+  }
+  const rectLoops = [];
+  for (const [x0, z0, x1, z1] of [[-155, -155, 145, 145], [-105, -105, 95, 95], [-55, -55, 45, 45], [-155, -5, 145, 95]]) {
+    rectLoops.push([{ x: x0, z: z0 }, { x: x1, z: z0 }, { x: x1, z: z1 }, { x: x0, z: z1 }]);
+  }
+
+  return {
+    colliders, roadLines, rectLoops,
+    // All key points sit on road intersections (road centrelines), never inside a block,
+    // so the player is never pushed out of a building footprint on spawn or delivery.
+    spawn: { x: -55, z: 145 },           // Mara's garage (south-west intersection)
+    garage: { x: -55, z: 145 },
+    hospital: { x: -155, z: -155 },
+    pickup: { x: 145, z: -105 },
+    chopShop: { x: 145, z: 95 },
+    harbour: { x: 190, z: -40 },
+  };
+}
