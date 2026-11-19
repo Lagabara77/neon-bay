@@ -10,12 +10,12 @@ You are **Jax Marlowe**, wheelman for **Mara Voss** and her crew in Neon Bay, a 
 
 ## Features
 
-- **Open city** — 8×8 blocks (~400×400 m) of roads, lit towers, sidewalks, street lamps, traffic lights, trees, hydrants, benches, and a harbour with water, pier, containers, and cranes. Dusk sky, fog, neon signs.
+- **Open city** — 8×8 blocks (~400×400 m) of roads, lit towers with varied window facades, sidewalks, slim street lamps, traffic lights, trees, hydrants, benches, and a harbour with water, pier, containers, and cranes. Landmarks: the **Neon Spire** tower (tallest in the city, neon rings) and the **Harbor Lighthouse** with a sweeping beam. Dusk sky, fog, neon signs.
 - **On foot** — third-person WASD movement, mouse-drag orbit camera, Shift to run, Space handbrake in cars, F to punch, Q / right-click to shoot (hitscan pistol, 12 rounds, R reloads).
 - **Driving** — arcade physics (accelerate, steer, brake, handbrake), chase camera, speedometer. Press E near a car to steal it (+1 wanted star).
 - **Living streets** — 12 AI traffic cars looping the roads, 20 pedestrians who walk the sidewalks and flee from danger.
 - **Wanted 0–5 stars** — stealing cars, hitting pedestrians, and punching cops raise your heat. Police cruisers chase and ram you; foot cops chase and beat you down. Get **Busted** or **Wasted** and you wake up at the hospital minus 20% of your cash.
-- **3 story missions** — *The Pickup* ($150), *Hot Wheels* ($300), *Harbor Run* ($500, timed), with waypoint beams, minimap blips, and objective banners.
+- **3 story missions** — *The Pickup* ($150), *Hot Wheels* ($300, drive the stolen car into the chop shop), *Harbor Run* ($500, timed), with waypoint beams, minimap blips, and objective banners.
 - **HUD** — health bar, cash, wanted stars, objective banner, speedometer, and a 2D top-down minimap (player arrow, police blips, mission blip, cars).
 - **Save / pause** — title screen with Start New / Continue (localStorage), Esc to pause, Busted/Wasted respawn screens.
 - **Audio** — 100% procedural WebAudio: engine hum that follows speed, two-tone siren, pickup blips, punch and gunshot sounds. M mutes.

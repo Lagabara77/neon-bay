@@ -40,5 +40,7 @@ export function createAudio() {
     busted() { blip(440, 0.3, 'sawtooth', 0.15); setTimeout(() => blip(330, 0.5, 'sawtooth', 0.15), 200); },
     toggleMute() { muted = !muted; if (ctx) { if (engineGain) engineGain.gain.value = 0; if (sirenGain) sirenGain.gain.value = 0; } return muted; },
     isMuted() { return muted; },
+    // play-test handle: current WebAudio state (no gameplay effect)
+    debug() { return { muted, hasCtx: !!ctx, state: ctx ? ctx.state : 'none', siren: sirenGain ? +sirenGain.gain.value.toFixed(3) : 0, engine: engineGain ? +engineGain.gain.value.toFixed(3) : 0 }; },
   };
 }

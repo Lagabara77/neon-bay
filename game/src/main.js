@@ -420,8 +420,14 @@ function updatePlayer(dt) {
     if (Math.abs(car.speed) > 0.5) car.heading += steer * 1.9 * dt * Math.sign(car.speed) * clamp(Math.abs(car.speed) / 8, 0.3, 1);
     const nx = car.group.position.x + Math.sin(car.heading) * car.speed * dt;
     const nz = car.group.position.z + Math.cos(car.heading) * car.speed * dt;
+    // axis-separated movement: a car sliding along a building face keeps moving
+    // on the free axis instead of wedging itself into a corner
     if (!pointInCollider(nx, nz, 1.4) && nx > -198 && nx < 182 && nz > -198 && nz < 198) {
       car.group.position.x = nx; car.group.position.z = nz;
+    } else if (!pointInCollider(nx, car.group.position.z, 1.4) && nx > -198 && nx < 182) {
+      car.group.position.x = nx;
+    } else if (!pointInCollider(car.group.position.x, nz, 1.4) && nz > -198 && nz < 198) {
+      car.group.position.z = nz;
     } else car.speed *= 0.4;
     car.group.rotation.y = car.heading;
     player.pos.copy(car.group.position);
@@ -455,6 +461,14 @@ function updatePlayer(dt) {
     player.mesh.position.y = moving ? Math.abs(Math.sin(G.time * 10)) * 0.08 : 0;
     G.speed = 0;
     audio.setEngine(0, false);
+  }
+  // mission 2 drive-in delivery: rolling the target car into the chop shop
+  // completes it (no E press needed — a fast car would otherwise overshoot
+  // the 8 m radius before the player can press E)
+  if (G.missionIdx === 1 && G.missionStage === 1 && G.inCar && G.car === G.targetCar &&
+      dist2d(G.car.group.position.x, G.car.group.position.z, city.chopShop.x, city.chopShop.z) < 8) {
+    completeMission();
+    return;
   }
   // mission timer
   if (G.missionIdx === 2 && G.missionStage === 1 && G.missionTimer > 0) {
@@ -502,10 +516,12 @@ function updatePoliceCars(dt) {
     const nx = pc.group.position.x + Math.sin(pc.heading) * pc.speed * dt;
     const nz = pc.group.position.z + Math.cos(pc.heading) * pc.speed * dt;
     if (!pointInCollider(nx, nz, 1.4) && nx > -198 && nx < 182 && nz > -198 && nz < 198) { pc.group.position.x = nx; pc.group.position.z = nz; }
+    else if (!pointInCollider(nx, pc.group.position.z, 1.4) && nx > -198 && nx < 182) { pc.group.position.x = nx; }
+    else if (!pointInCollider(pc.group.position.x, nz, 1.4) && nz > -198 && nz < 198) { pc.group.position.z = nz; }
     else pc.speed *= 0.5;
     pc.group.rotation.y = pc.heading;
-    // ram damage to player car
-    if (G.inCar && d < 3.5 && Math.abs(pc.speed) > 5) { G.health -= 6 * dt * 10; }
+    // ram damage to player car (was 60 hp/s: a stuck car died in ~2 s of contact)
+    if (G.inCar && d < 3.5 && Math.abs(pc.speed) > 5) { G.health -= 2 * dt * 10; }
     // flash lights
     if (pc.lights) { const on = Math.floor(G.time * 4) % 2 === 0; pc.lights[0].color.setHex(on ? 0xff2222 : 0x550000); pc.lights[1].color.setHex(on ? 0x000055 : 0x2244ff); }
   }
@@ -720,6 +736,7 @@ function frame(now) {
     }
   }
   updateCamera(dt);
+  if (city.beacon) city.beacon.rotation.y = G.time * 0.7; // lighthouse beam sweep
   if (G.screen === 'play') { drawMinimap(); updateHUD(dt); }
   renderer.render(scene, camera);
 }
@@ -737,4 +754,4 @@ if (SHOT) {
 }
 
 // debug handle for play-testing
-window.__game = { G, player, cars, peds, cops, startGame, missionTarget, saveGame, loadSave };
+window.__game = { G, player, cars, peds, cops, audio, startGame, missionTarget, saveGame, loadSave };

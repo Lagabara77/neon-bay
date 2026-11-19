@@ -56,18 +56,31 @@ export function buildCity(scene, seed) {
     }
   }
 
-  // --- buildings: shared geometries/materials, emissive windows via texture ---
-  const winCanvas = document.createElement('canvas'); winCanvas.width = 64; winCanvas.height = 128;
-  const wc = winCanvas.getContext('2d');
-  wc.fillStyle = '#241d33'; wc.fillRect(0, 0, 64, 128);
-  const litCols = ['#ffd23d', '#ff9a5c', '#7de3ff', '#ff7ad9'];
-  for (let y = 6; y < 122; y += 12) for (let x = 6; x < 58; x += 10) {
-    wc.fillStyle = rand() < 0.55 ? litCols[Math.floor(rand() * litCols.length)] : '#14101e';
-    wc.fillRect(x, y, 6, 8);
+  // --- buildings: shared geometries/materials, emissive windows via textures ---
+  // Four window-pattern variants (different grid, lit ratio, palette) so the
+  // towers don't all repeat the same facade; 12 materials = 6 body colours x textures.
+  function makeWinTex(v) {
+    const r = mulberry32(seed * 131 + v * 17 + 5);
+    const cv = document.createElement('canvas'); cv.width = 64; cv.height = 128;
+    const c = cv.getContext('2d');
+    c.fillStyle = '#241d33'; c.fillRect(0, 0, 64, 128);
+    const stepX = [10, 8, 12, 10][v], stepY = [12, 10, 14, 12][v];
+    const wW = [6, 5, 7, 4][v], wH = [8, 6, 9, 7][v];
+    const lit = [0.55, 0.35, 0.7, 0.45][v];
+    const palettes = [['#ffd23d', '#ff9a5c', '#7de3ff', '#ff7ad9'], ['#ffd23d', '#ff9a5c'],
+      ['#7de3ff', '#ff7ad9', '#ffd23d'], ['#ff9a5c', '#ffd23d']];
+    const pal = palettes[v];
+    for (let y = 6; y < 122; y += stepY) for (let x = 6; x < 58; x += stepX) {
+      c.fillStyle = r() < lit ? pal[Math.floor(r() * pal.length)] : '#14101e';
+      c.fillRect(x, y, wW, wH);
+    }
+    return new THREE.CanvasTexture(cv);
   }
-  const winTex = new THREE.CanvasTexture(winCanvas);
-  const bldgMats = [0x3a3450, 0x4a2f4d, 0x2f3d5c, 0x503a2e, 0x37304a, 0x5c2f3d].map(c =>
-    new THREE.MeshLambertMaterial({ color: c, emissive: 0xffffff, emissiveMap: winTex, emissiveIntensity: 0.55 }));
+  const winTexes = [0, 1, 2, 3].map(makeWinTex);
+  const bldgCols = [0x3a3450, 0x4a2f4d, 0x2f3d5c, 0x503a2e, 0x37304a, 0x5c2f3d];
+  const bldgMats = [];
+  for (let i = 0; i < 12; i++) bldgMats.push(new THREE.MeshLambertMaterial({
+    color: bldgCols[i % bldgCols.length], emissive: 0xffffff, emissiveMap: winTexes[i % winTexes.length], emissiveIntensity: 0.55 }));
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
   const roofMat = new THREE.MeshLambertMaterial({ color: 0x1a1622 });
 
@@ -76,6 +89,9 @@ export function buildCity(scene, seed) {
     const x0 = -200 + bx * 50, z0 = -200 + bz * 50;
     const isHarbourBlock = x0 > 160; // east edge blocks are the harbour strip
     if (isHarbourBlock) continue;
+    // block (3,3) is the plaza of the Neon Spire landmark — no random buildings
+    const isPlazaBlock = bx === 3 && bz === 3;
+    if (!isPlazaBlock) {
     // 1-3 buildings per block, placed on a sub-grid
     const n = 1 + Math.floor(rand() * 3);
     for (let k = 0; k < n; k++) {
@@ -97,9 +113,28 @@ export function buildCity(scene, seed) {
         sign.position.set(m.position.x, h + 1.2, m.position.z); scene.add(sign);
       }
     }
+    } // end plaza-block skip
     // sidewalk slab
     const walk = new THREE.Mesh(walkGeo, walkMat); walk.position.set(x0 + 20, 0.02, z0 + 20); scene.add(walk);
   }
+
+  // --- landmarks: Neon Spire tower (plaza block 3,3, centre -30,-30) ---
+  const spireBase = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color: 0x2f2a3d }));
+  spireBase.scale.set(16, 8, 16); spireBase.position.set(-30, 4, -30); scene.add(spireBase);
+  const spireShaft = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color: 0x4a2f4d, emissive: 0xffffff, emissiveMap: winTexes[2], emissiveIntensity: 0.4 }));
+  spireShaft.scale.set(9, 34, 9); spireShaft.position.set(-30, 25, -30); scene.add(spireShaft);
+  const spireCrown = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color: 0x2f2a3d }));
+  spireCrown.scale.set(11, 4, 11); spireCrown.position.set(-30, 44, -30); scene.add(spireCrown);
+  const spireAntenna = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 8, 6), new THREE.MeshLambertMaterial({ color: 0x222226 }));
+  spireAntenna.position.set(-30, 50, -30); scene.add(spireAntenna);
+  const spireBeacon = new THREE.Mesh(new THREE.SphereGeometry(0.7, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff2d2d }));
+  spireBeacon.position.set(-30, 54.4, -30); scene.add(spireBeacon);
+  const ringCols = [0xff2d78, 0x00e5ff, 0xffd23d];
+  for (let i = 0; i < 3; i++) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(6.8, 0.35, 8, 32), new THREE.MeshBasicMaterial({ color: ringCols[i] }));
+    ring.rotation.x = Math.PI / 2; ring.position.set(-30, 12 + i * 12, -30); scene.add(ring);
+  }
+  colliders.push({ minX: -38, maxX: -22, minZ: -38, maxZ: -22 });
 
   // --- harbour: water plane + pier + containers + crane ---
   const water = new THREE.Mesh(new THREE.PlaneGeometry(120, 420), new THREE.MeshLambertMaterial({ color: 0x0e4a6e }));
@@ -118,18 +153,39 @@ export function buildCity(scene, seed) {
     colliders.push({ minX: px - 5, maxX: px + 5, minZ: pz - 1.7, maxZ: pz + 1.7 });
   }
 
-  // --- street lamps along roads ---
-  const poleGeo = new THREE.CylinderGeometry(0.12, 0.12, 6, 6);
+  // --- lighthouse at the north end of the pier (rotating beam) ---
+  const lhBase = new THREE.Mesh(new THREE.CylinderGeometry(3, 3.4, 2, 10), new THREE.MeshLambertMaterial({ color: 0x3a3a40 }));
+  lhBase.position.set(198, 1, -178); scene.add(lhBase);
+  const lhStripeCols = [0xe8e4da, 0xd83d2e, 0xe8e4da];
+  for (let i = 0; i < 3; i++) {
+    const seg = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 5, 10), new THREE.MeshLambertMaterial({ color: lhStripeCols[i] }));
+    seg.position.set(198, 4.5 + i * 5, -178); scene.add(seg);
+  }
+  const lhGallery = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 1, 10), new THREE.MeshLambertMaterial({ color: 0x222226 }));
+  lhGallery.position.set(198, 17.5, -178); scene.add(lhGallery);
+  const lhLamp = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 2, 10), new THREE.MeshBasicMaterial({ color: 0xffe9a8 }));
+  lhLamp.position.set(198, 19, -178); scene.add(lhLamp);
+  const beacon = new THREE.Group();
+  beacon.position.set(198, 19, -178);
+  const beamMat = new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false });
+  const beamGeo = new THREE.BoxGeometry(30, 1.4, 1.4);
+  const beam1 = new THREE.Mesh(beamGeo, beamMat); beam1.position.x = 15; beacon.add(beam1);
+  const beam2 = new THREE.Mesh(beamGeo, beamMat); beam2.position.x = -15; beacon.add(beam2);
+  scene.add(beacon);
+  colliders.push({ minX: 195, maxX: 201, minZ: -181, maxZ: -175 });
+
+  // --- street lamps along roads (slim: thin pole, small bulb) ---
+  const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, 5.2, 6);
   const poleMat = new THREE.MeshLambertMaterial({ color: 0x222226 });
-  const lampGeo = new THREE.SphereGeometry(0.5, 8, 6);
+  const lampGeo = new THREE.SphereGeometry(0.3, 8, 6);
   const lampMat = new THREE.MeshBasicMaterial({ color: 0xffe9a8 });
   const lampLightMat = new THREE.MeshBasicMaterial({ color: 0xffd23d, transparent: true, opacity: 0.15 });
   for (const c of roadLines) for (let d = -180; d <= 180; d += 50) {
     for (const [lx, lz] of [[c + 6, d], [c - 6, d + 25]]) {
       if (Math.abs(lx) > 195 || Math.abs(lz) > 195) continue;
-      const pole = new THREE.Mesh(poleGeo, poleMat); pole.position.set(lx, 3, lz); scene.add(pole);
-      const lamp = new THREE.Mesh(lampGeo, lampMat); lamp.position.set(lx, 6.2, lz); scene.add(lamp);
-      const glow = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6), lampLightMat); glow.position.set(lx, 6.2, lz); scene.add(glow);
+      const pole = new THREE.Mesh(poleGeo, poleMat); pole.position.set(lx, 2.6, lz); scene.add(pole);
+      const lamp = new THREE.Mesh(lampGeo, lampMat); lamp.position.set(lx, 5.4, lz); scene.add(lamp);
+      const glow = new THREE.Mesh(new THREE.SphereGeometry(0.38, 8, 6), lampLightMat); glow.position.set(lx, 5.4, lz); scene.add(glow);
     }
   }
 
@@ -180,7 +236,7 @@ export function buildCity(scene, seed) {
   }
 
   return {
-    colliders, roadLines, rectLoops,
+    colliders, roadLines, rectLoops, beacon,
     // All key points sit on road intersections (road centrelines), never inside a block,
     // so the player is never pushed out of a building footprint on spawn or delivery.
     spawn: { x: -55, z: 145 },           // Mara's garage (south-west intersection)
