@@ -32,3 +32,15 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1030; fon
 .buttons button:disabled { opacity: .35; cursor: default; }
 .controls { font-size: 13px; color: #bdb2e8; }
 .foot { font-size: 11px; color: #7d739e; margin-top: 30px; }
+/* touch controls: only on coarse-pointer devices (phones/tablets) */
+#touch { display: none; }
+body.touch #touch { display: block; position: absolute; inset: 0; pointer-events: none; }
+body.touch #hint { display: none; }
+body.touch #objective { max-width: 86vw; top: 102px; }
+body.touch #minimap { width: 120px; height: 120px; }
+body.touch #speedo { bottom: 240px; right: 14px; font-size: 32px; }
+#joy { position: absolute; left: 18px; bottom: 70px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.35); pointer-events: auto; touch-action: none; }
+#joy-knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; border-radius: 50%; background: rgba(255,255,255,.35); transform: translate(-50%,-50%); }
+#touch-btns { position: absolute; right: 16px; bottom: 150px; display: flex; gap: 12px; pointer-events: auto; }
+#touch-btns button { width: 64px; height: 64px; border-radius: 50%; border: 2px solid rgba(255,255,255,.5); background: rgba(255,45,120,.55); color: #fff; font-weight: 800; font-size: 15px; touch-action: none; }
+#btn-act { background: rgba(0,229,255,.5); }

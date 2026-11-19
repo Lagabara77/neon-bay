@@ -47,14 +47,20 @@ export function buildCity(scene, seed) {
   for (const c of roadLines) {
     const rh = new THREE.Mesh(roadGeoH, roadMat); rh.rotation.x = -Math.PI / 2; rh.position.set(0, 0.06, c); scene.add(rh);
     const rv = new THREE.Mesh(roadGeoV, roadMat); rv.rotation.x = -Math.PI / 2; rv.position.set(c, 0.06, 0); scene.add(rv);
-    // centre dashes
-    const dashMat = new THREE.MeshBasicMaterial({ color: 0xd8c95a });
-    const dashGeo = new THREE.PlaneGeometry(3, 0.5);
-    for (let d = -190; d < 200; d += 14) {
-      const dh = new THREE.Mesh(dashGeo, dashMat); dh.rotation.x = -Math.PI / 2; dh.position.set(d, 0.08, c); scene.add(dh);
-      const dv = new THREE.Mesh(dashGeo, dashMat); dv.rotation.x = -Math.PI / 2; dv.rotation.z = Math.PI / 2; dv.position.set(c, 0.08, d); scene.add(dv);
-    }
   }
+  // --- road dashes: one InstancedMesh per orientation (was ~500 meshes) ---
+  const dashMat = new THREE.MeshBasicMaterial({ color: 0xd8c95a });
+  const dashGeoH = new THREE.PlaneGeometry(3, 0.5);
+  const dashGeoV = new THREE.PlaneGeometry(0.5, 3);
+  const dashH = [], dashV = [];
+  for (const c of roadLines) for (let d = -190; d < 200; d += 14) { dashH.push([d, c]); dashV.push([c, d]); }
+  const m4 = new THREE.Matrix4();
+  const dashMeshH = new THREE.InstancedMesh(dashGeoH, dashMat, dashH.length);
+  dashH.forEach(([x, z], i) => { m4.makeRotationX(-Math.PI / 2); m4.setPosition(x, 0.08, z); dashMeshH.setMatrixAt(i, m4); });
+  scene.add(dashMeshH);
+  const dashMeshV = new THREE.InstancedMesh(dashGeoV, dashMat, dashV.length);
+  dashV.forEach(([x, z], i) => { m4.makeRotationX(-Math.PI / 2); m4.setPosition(x, 0.08, z); dashMeshV.setMatrixAt(i, m4); });
+  scene.add(dashMeshV);
 
   // --- buildings: shared geometries/materials, emissive windows via textures ---
   // Four window-pattern variants (different grid, lit ratio, palette) so the
@@ -175,19 +181,29 @@ export function buildCity(scene, seed) {
   colliders.push({ minX: 195, maxX: 201, minZ: -181, maxZ: -175 });
 
   // --- street lamps along roads (slim: thin pole, small bulb) ---
+  // --- street lamps: 3 InstancedMeshes (was ~430 meshes) ---
   const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, 5.2, 6);
   const poleMat = new THREE.MeshLambertMaterial({ color: 0x222226 });
   const lampGeo = new THREE.SphereGeometry(0.3, 8, 6);
   const lampMat = new THREE.MeshBasicMaterial({ color: 0xffe9a8 });
+  const glowGeo = new THREE.SphereGeometry(0.38, 8, 6);
   const lampLightMat = new THREE.MeshBasicMaterial({ color: 0xffd23d, transparent: true, opacity: 0.15 });
+  const lampSpots = [];
   for (const c of roadLines) for (let d = -180; d <= 180; d += 50) {
     for (const [lx, lz] of [[c + 6, d], [c - 6, d + 25]]) {
       if (Math.abs(lx) > 195 || Math.abs(lz) > 195) continue;
-      const pole = new THREE.Mesh(poleGeo, poleMat); pole.position.set(lx, 2.6, lz); scene.add(pole);
-      const lamp = new THREE.Mesh(lampGeo, lampMat); lamp.position.set(lx, 5.4, lz); scene.add(lamp);
-      const glow = new THREE.Mesh(new THREE.SphereGeometry(0.38, 8, 6), lampLightMat); glow.position.set(lx, 5.4, lz); scene.add(glow);
+      lampSpots.push([lx, lz]);
     }
   }
+  const poleMesh = new THREE.InstancedMesh(poleGeo, poleMat, lampSpots.length);
+  const lampMesh = new THREE.InstancedMesh(lampGeo, lampMat, lampSpots.length);
+  const glowMesh = new THREE.InstancedMesh(glowGeo, lampLightMat, lampSpots.length);
+  lampSpots.forEach(([lx, lz], i) => {
+    m4.identity(); m4.setPosition(lx, 2.6, lz); poleMesh.setMatrixAt(i, m4);
+    m4.identity(); m4.setPosition(lx, 5.4, lz); lampMesh.setMatrixAt(i, m4);
+    m4.identity(); m4.setPosition(lx, 5.4, lz); glowMesh.setMatrixAt(i, m4);
+  });
+  scene.add(poleMesh); scene.add(lampMesh); scene.add(glowMesh);
 
   // --- traffic lights (decorative) at a few intersections ---
   const tlPole = new THREE.CylinderGeometry(0.1, 0.1, 4.5, 6);
@@ -242,6 +258,7 @@ export function buildCity(scene, seed) {
     spawn: { x: -55, z: 145 },           // Mara's garage (south-west intersection)
     garage: { x: -55, z: 145 },
     hospital: { x: -155, z: -155 },
+    police: { x: 95, z: -155 }, // Bay PD precinct (road intersection, north-east)
     pickup: { x: 145, z: -105 },
     chopShop: { x: 145, z: 95 },
     harbour: { x: 190, z: -40 },

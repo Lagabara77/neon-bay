@@ -14,11 +14,12 @@ You are **Jax Marlowe**, wheelman for **Mara Voss** and her crew in Neon Bay, a 
 - **On foot** — third-person WASD movement, mouse-drag orbit camera, Shift to run, Space handbrake in cars, F to punch, Q / right-click to shoot (hitscan pistol, 12 rounds, R reloads).
 - **Driving** — arcade physics (accelerate, steer, brake, handbrake), chase camera, speedometer. Press E near a car to steal it (+1 wanted star).
 - **Living streets** — 12 AI traffic cars looping the roads, 20 pedestrians who walk the sidewalks and flee from danger.
-- **Wanted 0–5 stars** — stealing cars, hitting pedestrians, and punching cops raise your heat. Police cruisers chase and ram you; foot cops chase and beat you down. Get **Busted** or **Wasted** and you wake up at the hospital minus 20% of your cash.
+- **Wanted 0–5 stars** — stealing cars, hitting pedestrians, and punching cops raise your heat. Police cruisers chase and ram you; foot cops chase and beat you down. Get **Busted** and you cool off at the Bay PD precinct, or **Wasted** and you wake up at the hospital — either way minus 20% of your cash. Your car stays where you left it, ready to steal again.
 - **3 story missions** — *The Pickup* ($150), *Hot Wheels* ($300, drive the stolen car into the chop shop), *Harbor Run* ($500, timed), with waypoint beams, minimap blips, and objective banners.
 - **HUD** — health bar, cash, wanted stars, objective banner, speedometer, and a 2D top-down minimap (player arrow, police blips, mission blip, cars).
 - **Save / pause** — title screen with Start New / Continue (localStorage), Esc to pause, Busted/Wasted respawn screens.
 - **Audio** — 100% procedural WebAudio: engine hum that follows speed, two-tone siren, pickup blips, punch and gunshot sounds. M mutes.
+- **Touch controls** — on phones/tablets: a virtual joystick to walk and drive, FIRE and E buttons, and drag-to-orbit camera. Touch devices render at a capped pixel ratio with no antialiasing, and road markings/lamps are instanced, so the city stays smooth.
 
 ## Controls
 
@@ -34,6 +35,7 @@ You are **Jax Marlowe**, wheelman for **Mara Voss** and her crew in Neon Bay, a 
 | Space | Handbrake (in car) |
 | M | Mute |
 | Esc | Pause |
+| Touch joystick + FIRE / E | Move, drive, shoot, interact (touch devices) |
 
 ## Run it
 

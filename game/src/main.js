@@ -12,9 +12,11 @@ const seed = Number.isInteger(seedParam) ? seedParam : 1;
 const SHOT = shotName ? shotName.toLowerCase() : null;
 const SAVE_KEY = 'neonbay-save-v1';
 
+const IS_TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 const canvas = document.getElementById('game');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// Touch devices: no MSAA + lower pixel-ratio cap (fill-rate is the bottleneck on phones)
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !IS_TOUCH });
+renderer.setPixelRatio(Math.min(devicePixelRatio, IS_TOUCH ? 1.5 : 2));
 renderer.setSize(innerWidth, innerHeight);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 1200);
@@ -245,14 +247,16 @@ function endRun(kind) {
   const lost = Math.floor(G.money * 0.2);
   G.money -= lost; G.wanted = 0; G.health = 100; G.bustedTimer = 0;
   if (G.inCar) exitCar(true);
-  player.pos.set(city.hospital.x, 0, city.hospital.z);
+  // BUSTED wakes up at the Bay PD precinct, WASTED at the hospital
+  const respawn = kind === 'busted' ? city.police : city.hospital;
+  player.pos.set(respawn.x, 0, respawn.z);
   player.mesh.position.copy(player.pos);
   for (const c of [...cops]) { scene.remove(c.group); cops.splice(cops.indexOf(c), 1); }
   for (const pc of [...policeCars()]) { scene.remove(pc.group); cars.splice(cars.indexOf(pc), 1); }
   G.screen = 'busted';
   $('busted-title').textContent = kind === 'busted' ? 'BUSTED' : 'WASTED';
   $('busted-text').textContent = kind === 'busted'
-    ? `The Bay PD caught you. You lost $${lost} in fines and woke up at the hospital.`
+    ? `The Bay PD caught you. You lost $${lost} in fines and cooled off at the precinct.`
     : `You got wasted. Medics patched you up at the hospital — $${lost} in bills.`;
   show($('hud'), false); show($('busted'), true);
   saveGame();
@@ -343,6 +347,42 @@ addEventListener('mousemove', e => {
 });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 
+// ---------- touch controls (phones/tablets; desktop input untouched) ----------
+// touch.x: -1 (left) .. 1 (right); touch.y: -1 (back) .. 1 (forward)
+const touch = { x: 0, y: 0, active: false, id: null };
+if (IS_TOUCH) document.body.classList.add('touch');
+const joy = $('joy'), knob = $('joy-knob');
+function joyUpdate(e) {
+  const r = joy.getBoundingClientRect();
+  const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  let dx = (e.clientX - cx) / (r.width / 2), dy = (e.clientY - cy) / (r.height / 2);
+  const len = Math.hypot(dx, dy); if (len > 1) { dx /= len; dy /= len; }
+  touch.x = dx; touch.y = -dy; // joystick up = forward
+  knob.style.transform = `translate(calc(-50% + ${dx * 34}px), calc(-50% + ${dy * 34}px))`;
+}
+function joyEnd() { touch.x = 0; touch.y = 0; touch.active = false; touch.id = null; knob.style.transform = 'translate(-50%, -50%)'; }
+joy.addEventListener('pointerdown', e => { e.preventDefault(); touch.active = true; touch.id = e.pointerId; joy.setPointerCapture(e.pointerId); joyUpdate(e); });
+joy.addEventListener('pointermove', e => { if (touch.active && e.pointerId === touch.id) joyUpdate(e); });
+joy.addEventListener('pointerup', e => { if (e.pointerId === touch.id) joyEnd(); });
+joy.addEventListener('pointercancel', e => { if (e.pointerId === touch.id) joyEnd(); });
+$('btn-fire').addEventListener('pointerdown', e => { e.preventDefault(); if (G.screen === 'play') shoot(); });
+$('btn-act').addEventListener('pointerdown', e => { e.preventDefault(); if (G.screen === 'play') onInteract(); });
+// one-finger drag on the canvas orbits the camera
+let camTouch = null;
+canvas.addEventListener('touchstart', e => {
+  if (camTouch === null && e.changedTouches.length) { const t = e.changedTouches[0]; camTouch = { id: t.identifier, x: t.clientX, y: t.clientY }; }
+  e.preventDefault();
+}, { passive: false });
+canvas.addEventListener('touchmove', e => {
+  if (camTouch === null) return;
+  for (const t of e.changedTouches) if (t.identifier === camTouch.id) {
+    G.camYaw -= (t.clientX - camTouch.x) * 0.008; G.camPitch = clamp(G.camPitch + (t.clientY - camTouch.y) * 0.006, 0.05, 1.1);
+    camTouch.x = t.clientX; camTouch.y = t.clientY;
+  }
+  e.preventDefault();
+}, { passive: false });
+canvas.addEventListener('touchend', e => { for (const t of e.changedTouches) if (camTouch && t.identifier === camTouch.id) camTouch = null; });
+
 function onInteract() {
   // mission pickup / delivery points
   const t = missionTarget();
@@ -407,12 +447,10 @@ refreshContinue();
 // ---------- per-frame updates ----------
 function updatePlayer(dt) {
   const run = keys.has('ShiftLeft') || keys.has('ShiftRight');
-  const fwd = (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0);
-  const strafe = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
   if (G.inCar && G.car) {
     const car = G.car;
-    const accel = keys.has('KeyW') ? 1 : keys.has('KeyS') ? -0.6 : 0;
-    const steer = (keys.has('KeyA') ? 1 : 0) - (keys.has('KeyD') ? 1 : 0);
+    const accel = clamp((keys.has('KeyW') ? 1 : keys.has('KeyS') ? -0.6 : 0) + touch.y, -1, 1);
+    const steer = clamp((keys.has('KeyA') ? 1 : 0) - (keys.has('KeyD') ? 1 : 0) - touch.x, -1, 1);
     const handbrake = keys.has('Space');
     car.speed += accel * 16 * dt;
     car.speed -= car.speed * (handbrake ? 2.2 : 0.35) * dt;
@@ -442,6 +480,8 @@ function updatePlayer(dt) {
   } else {
     const spd = (run ? 7.5 : 3.8);
     let mx = 0, mz = 0;
+    const fwd = clamp((keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0) + touch.y, -1, 1);
+    const strafe = clamp((keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0) + touch.x, -1, 1);
     if (fwd || strafe) {
       const yaw = G.camYaw;
       const fx = Math.sin(yaw), fz = Math.cos(yaw);
@@ -754,4 +794,4 @@ if (SHOT) {
 }
 
 // debug handle for play-testing
-window.__game = { G, player, cars, peds, cops, audio, startGame, missionTarget, saveGame, loadSave };
+window.__game = { G, player, cars, peds, cops, audio, renderer, touch, IS_TOUCH, startGame, missionTarget, saveGame, loadSave };
