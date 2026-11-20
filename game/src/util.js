@@ -1,4 +1,4 @@
-// Small shared helpers: deterministic RNG + math.
+// Small shared helpers: deterministic RNG + math + display formatting.
 export function mulberry32(seed) {
   let a = seed >>> 0;
   return function () {
@@ -17,3 +17,10 @@ export function angleLerp(a, b, t) {
   if (d < -Math.PI) d += Math.PI * 2;
   return a + d * t;
 }
+// Display helpers used by the HUD (money, clock, distances — all shown on screen).
+export const fmtMoney = n => '$' + Math.round(n).toLocaleString('en-US');
+export const fmtClock = minutes => {
+  const h = Math.floor(minutes / 60) % 24, m = Math.floor(minutes % 60);
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+};
+export const fmtDist = d => Math.max(1, Math.round(d)) + ' m';

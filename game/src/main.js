@@ -1,9 +1,10 @@
 // Neon Bay — open-world crime game. Original fiction: Jax Marlowe, wheelman for Mara Voss.
-// Three.js low-poly dusk city. Keyboard + mouse. ?shot=start|drive|wanted|mission&seed=N stages a scene.
+// Three.js low-poly dusk city. Keyboard + mouse. ?shot=chase|shootout|map|title&seed=N
+// stages a money shot (legacy ?shot=start|drive|wanted|mission still work).
 import * as THREE from 'three';
-import { buildCity } from './city.js';
+import { buildCity, districtAt } from './city.js';
 import { createAudio } from './audio.js';
-import { clamp, lerp, angleLerp, dist2d, mulberry32 } from './util.js';
+import { clamp, lerp, angleLerp, dist2d, mulberry32, fmtMoney, fmtClock, fmtDist } from './util.js';
 
 const params = new URLSearchParams(location.search);
 const shotName = params.get('shot');
@@ -22,7 +23,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 1200);
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
-const city = buildCity(scene, seed);
+const city = buildCity(scene, seed, { night: SHOT === 'shootout' });
 const rand = mulberry32(seed * 7919 + 13);
 const audio = createAudio();
 
@@ -56,12 +57,22 @@ const G = {
   missionIdx: 0, missionStage: 0, missionTimer: 0, hasPackage: false,
   bustedTimer: 0, wantedDecay: 0, time: 0, muted: false,
   camYaw: Math.PI, camPitch: 0.32, camDist: 9,
-  targetCar: null,
+  targetCar: null, respect: 0, day: 4, minutes: 18 * 60 + 16,
 };
+const STATS = { carsStolen: 0, copsEscaped: 0, kmDriven: 0, takenOut: 0, geckos: 0, missionsDone: 0, bestWanted: 0 };
+const RANKS = [
+  { at: 0, name: 'GETAWAY KID' }, { at: 100, name: 'DOCK HAND' },
+  { at: 250, name: 'SHOT CALLER' }, { at: 550, name: 'KINGPIN' },
+];
+function rankFor(r) { let cur = RANKS[0], next = null; for (let i = 0; i < RANKS.length; i++) { if (r >= RANKS[i].at) cur = RANKS[i]; else { next = RANKS[i]; break; } } return { cur, next }; }
 const player = { pos: new THREE.Vector3(city.spawn.x, 0, city.spawn.z), heading: 0, mesh: null, speed: 0 };
-const cars = [];   // {group, heading, speed, ai, loop, wp, color, isPolice, isTarget, lights:[m1,m2]}
+const cars = [];   // {group, heading, speed, ai, loop, wp, color, isPolice, isTarget, lights:[m1,m2], name, condition, unit}
 const peds = [];   // {group, heading, speed, state, tx, tz, down, downT, hp}
 const cops = [];   // foot police {group, heading, speed, hp, hitCd}
+const geckos = []; // {mesh, x, z, taken}
+let policeSeq = 0;
+const POLICE_UNITS = ['TARPON-38', 'TARPON-11', 'GULL-12', 'OSPREY-1', 'PELICAN-11', 'BARRACUDA-18', 'HERON-2', 'MAKO-6'];
+const CAR_NAMES = { 0xc0392b: 'VIREO GT', 0x2980b9: 'CALYX SPRINT', 0xf1c40f: 'RUKAN PELO GT', 0x7f8c8d: 'SQUALL GT', 0x8e44ad: 'VELOZ COMET RS', 0x27ae60: 'TARPON CRUISER', 0xe67e22: 'MALECON GT', 0xecf0f1: 'LANTERNA S', 0x2c3e50: 'NOCTURNE GT' };
 
 // ---------- meshes ----------
 function makeCarMesh(color, isPolice) {
@@ -104,7 +115,11 @@ function spawnCar(x, z, heading, color, opts = {}) {
   const { group, lights } = makeCarMesh(color, !!opts.police);
   group.position.set(x, 0, z); group.rotation.y = heading;
   scene.add(group);
-  const car = { group, heading, speed: 0, ai: !!opts.ai, loop: opts.loop || null, wp: 0, color, isPolice: !!opts.police, isTarget: !!opts.target, lights, targetSpeed: opts.speed || 9 };
+  const car = { group, heading, speed: 0, ai: !!opts.ai, loop: opts.loop || null, wp: 0, color,
+    isPolice: !!opts.police, isTarget: !!opts.target, lights, targetSpeed: opts.speed || 9,
+    name: opts.police ? 'BAY PD CRUISER' : (opts.name || CAR_NAMES[color] || 'VIREO GT'),
+    condition: opts.condition ?? (70 + Math.floor(rand() * 30)),
+    unit: opts.police ? POLICE_UNITS[policeSeq++ % POLICE_UNITS.length] : null };
   cars.push(car); return car;
 }
 function spawnPed(x, z) {
@@ -114,13 +129,42 @@ function spawnPed(x, z) {
   const p = { group: g, heading: rand() * Math.PI * 2, speed: 1.4 + rand(), state: 'walk', tx: x, tz: z, down: false, downT: 0, hp: 1, fleeT: 0 };
   peds.push(p); return p;
 }
-function spawnCop(x, z) {
-  const g = makePersonMesh(0x1e3a8a, 0x14181f);
-  const cap = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.12, 0.4), new THREE.MeshLambertMaterial({ color: 0x0f1e4a }));
+function spawnCop(x, z, guard = false) {
+  const g = makePersonMesh(guard ? 0x8a1e1e : 0x1e3a8a, 0x14181f);
+  const cap = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.12, 0.4), new THREE.MeshLambertMaterial({ color: guard ? 0x4a0f0f : 0x0f1e4a }));
   cap.position.y = 1.92; g.add(cap);
+  if (guard) { // red marker cone so guards read as targets in the shootout shot
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.8, 6), new THREE.MeshBasicMaterial({ color: 0xff2222 }));
+    cone.position.y = 2.5; cone.rotation.x = Math.PI; g.add(cone);
+  }
   g.position.set(x, 0, z); scene.add(g);
-  const c = { group: g, heading: 0, speed: 0, hp: 3, hitCd: 0, down: false, downT: 0 };
+  const c = { group: g, heading: 0, speed: 0, hp: 3, hitCd: 0, down: false, downT: 0, guard };
   cops.push(c); return c;
+}
+
+// Bay PD helicopter: appears at wanted 4+, hovers over the player with a spotlight.
+const heli = (() => {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.2, 4.4), new THREE.MeshLambertMaterial({ color: 0x1e3a8a }));
+  body.position.y = 0; g.add(body);
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 3.2), new THREE.MeshLambertMaterial({ color: 0x1e3a8a }));
+  tail.position.set(0, 0.2, -3.4); g.add(tail);
+  const rotor = new THREE.Mesh(new THREE.BoxGeometry(9, 0.12, 0.5), new THREE.MeshLambertMaterial({ color: 0x222226 }));
+  rotor.position.y = 0.9; g.add(rotor);
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff2b0 }));
+  lamp.position.set(0, -0.8, 1.2); g.add(lamp);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 7, 38, 12, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false }));
+  beam.position.y = -19.5; g.add(beam);
+  g.visible = false; scene.add(g);
+  return { group: g, rotor };
+})();
+function updateHeli(dt) {
+  const on = G.wanted >= 4 && (G.screen === 'play' || !!SHOT);
+  heli.group.visible = on;
+  if (!on) return;
+  heli.group.position.set(player.pos.x, 11, player.pos.z - 22); // ahead, above the open road: visible in the chase camera
+  heli.rotor.rotation.y += dt * 14;
 }
 
 // player mesh (Jax: teal jacket)
@@ -150,25 +194,62 @@ for (let i = 0; i < 20; i++) {
   const along = -180 + rand() * 360;
   spawnPed(rand() < 0.5 ? along : c + 6, rand() < 0.5 ? c + 6 : along);
 }
+// Golden Geckos: 20 collectibles, gold spheres bobbing at fixed spots.
+for (const [gx, gz] of city.geckoSpots) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.45, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffd23d }));
+  m.position.set(gx, 1.2, gz); scene.add(m);
+  geckos.push({ mesh: m, x: gx, z: gz, taken: false });
+}
 
-// ---------- missions ----------
+// ---------- missions: 7 jobs in 5 chapters ----------
+// stage actions: pickup (E at target), deliver (E at target), steal (enter the marked car).
+// Missions 1-3 keep their original behaviour exactly (regression surface).
 const MISSIONS = [
-  { title: 'Mission 1 — The Pickup', reward: 150,
+  { chapter: 1, chapterName: 'LOW TIDE', title: 'The Pickup', reward: 150,
+    dialogWho: 'MARA VOSS · CREW BOSS', dialog: 'Jax, grab the package at the yellow marker and bring it home. No heroics.',
     stages: [
-      { text: 'Go to the yellow marker and pick up the package (E).', target: () => city.pickup },
-      { text: 'Package secured. Bring it back to Mara\'s garage (E).', target: () => city.garage },
+      { action: 'pickup', text: 'Go to the yellow marker and pick up the package (E).', next: 'NEXT Deliver to Mara\'s garage', target: () => city.pickup },
+      { action: 'deliver', text: 'Package secured. Bring it back to Mara\'s garage (E).', next: 'NEXT Complete the job', target: () => city.garage },
     ] },
-  { title: 'Mission 2 — Hot Wheels', reward: 300,
+  { chapter: 1, chapterName: 'LOW TIDE', title: 'Hot Wheels', reward: 300,
+    dialogWho: 'MARA VOSS · CREW BOSS', dialog: 'That gold coupe belongs to a collector who owes me. Take it — the law will notice.',
     stages: [
-      { text: 'Steal the marked car (E) — the law will notice. Wanted will rise.', target: () => G.targetCar ? { x: G.targetCar.group.position.x, z: G.targetCar.group.position.z } : { x: 45, z: 95 } },
-      { text: 'Deliver the car to the chop shop. Keep wanted at 2+ stars.', target: () => city.chopShop },
+      { action: 'steal', text: 'Steal the marked car (E) — the law will notice. Wanted will rise.', next: 'NEXT Deliver to the chop shop', target: () => G.targetCar ? { x: G.targetCar.group.position.x, z: G.targetCar.group.position.z } : { x: 45, z: 95 } },
+      { action: 'deliver', text: 'Deliver the car to the chop shop. Keep wanted at 2+ stars.', next: 'NEXT Complete the job', target: () => city.chopShop },
     ] },
-  { title: 'Mission 3 — Harbor Run', reward: 500,
+  { chapter: 2, chapterName: 'UNDERTOW', title: 'Harbor Run', reward: 500,
+    dialogWho: 'MARA VOSS · CREW BOSS', dialog: 'Ninety seconds, Jax. The boat does not wait for slow wheelmen.',
     stages: [
-      { text: 'Grab the package at Mara\'s garage (E), then run it to the harbor.', target: () => city.garage },
-      { text: 'Deliver to the harbor pier before time runs out!', target: () => city.harbour, timed: 90 },
+      { action: 'pickup', text: 'Grab the package at Mara\'s garage (E), then run it to the harbor.', next: 'NEXT Deliver to the harbor pier', target: () => city.garage },
+      { action: 'deliver', text: 'Deliver to the harbor pier before time runs out!', next: 'NEXT Beat the clock', target: () => city.harbour, timed: 90 },
+    ] },
+  { chapter: 2, chapterName: 'UNDERTOW', title: 'Night Market', reward: 800,
+    dialogWho: 'KIKI · LOOKOUT', dialog: 'The Kerono Boys are shaking down my stall in Old Pasaru. Grab the cash box and go — fast.',
+    stages: [
+      { action: 'pickup', text: 'Grab the cash box at the night market (E).', next: 'NEXT Deliver to Mara\'s garage', target: () => city.market },
+      { action: 'deliver', text: 'Deliver the cash box to Mara\'s garage before the heat closes in!', next: 'NEXT Beat the clock', target: () => city.garage, timed: 120 },
+    ] },
+  { chapter: 3, chapterName: 'HIGH WATER', title: 'The Getaway', reward: 2500,
+    dialogWho: 'MIRA · DRIVER', dialog: 'Orange coupe, Vela Heights. It is the only car fast enough for what comes next. Steal it.',
+    stages: [
+      { action: 'steal', text: 'Steal the marked orange coupe (E) — wanted will jump to 2 stars.', next: 'NEXT Deliver to the chop shop', target: () => G.targetCar ? { x: G.targetCar.group.position.x, z: G.targetCar.group.position.z } : { x: -105, z: 45 } },
+      { action: 'deliver', text: 'Deliver the coupe to the chop shop. Lose the tail if you can.', next: 'NEXT Complete the job', target: () => city.chopShop },
+    ] },
+  { chapter: 4, chapterName: 'SPRING TIDE', title: 'Banco Lucero', reward: 25000,
+    dialogWho: 'MARA VOSS · CREW BOSS', dialog: 'The vault truck runs the Strand at dusk. Take the ledger, bring it to the pier — and do not stop for anyone.',
+    stages: [
+      { action: 'pickup', text: 'Grab the ledger at Mara\'s garage (E) — wanted jumps to 4 stars.', next: 'NEXT Deliver to the harbor pier', target: () => city.garage },
+      { action: 'deliver', text: 'Deliver the ledger to the harbor pier before time runs out!', next: 'NEXT Beat the clock — Air One is up', target: () => city.harbour, timed: 120 },
+    ] },
+  { chapter: 5, chapterName: 'STORM SURGE', title: 'The Lamplighter', reward: 50000,
+    dialogWho: 'MARA VOSS · CREW BOSS', dialog: 'Last job, Jax. The Lamplighter burns the Combine\'s books tonight — five stars, no backup. Make it count.',
+    stages: [
+      { action: 'pickup', text: 'Grab the Lamplighter files at the yellow marker (E) — wanted jumps to 5 stars.', next: 'NEXT Deliver to the harbor pier', target: () => city.pickup },
+      { action: 'deliver', text: 'Deliver the files to the harbor pier before time runs out!', next: 'NEXT Beat the clock — Air One is up', target: () => city.harbour, timed: 150 },
     ] },
 ];
+const STEAL_SPOTS = { 1: { x: 45, z: 95, color: 0xffd23d, name: 'GOLD COUPE' }, 4: { x: -105, z: 45, color: 0xe67e22, name: 'ORANGE COUPE' } };
+const PICKUP_WANTED = { 3: 1, 5: 4, 6: 5 };
 const markerBeam = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 30, 16, 1, true),
   new THREE.MeshBasicMaterial({ color: 0xffd23d, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }));
 scene.add(markerBeam);
@@ -184,39 +265,63 @@ function missionText() {
   if (G.missionIdx >= MISSIONS.length) return 'Free roam — the Bay is yours. Cause chaos, or start a new game.';
   return MISSIONS[G.missionIdx].stages[G.missionStage].text;
 }
+function setDialog(who, text) { $('dialog-who').textContent = who; $('dialog-text').textContent = text; show($('dialog'), true); }
 function startMission(i) {
   G.missionIdx = i; G.missionStage = 0; G.hasPackage = false; G.missionTimer = 0;
-  if (i === 1 && !G.targetCar) {
-    G.targetCar = spawnCar(45, 95, Math.PI / 2, 0xffd23d, {});
-    // gold beacon ring on the target car
+  const spot = STEAL_SPOTS[i];
+  if (spot && !G.targetCar) {
+    G.targetCar = spawnCar(spot.x, spot.z, Math.PI / 2, spot.color, { name: spot.name });
     const ring = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.18, 8, 24), new THREE.MeshBasicMaterial({ color: 0xffd23d }));
     ring.rotation.x = Math.PI / 2; ring.position.y = 0.4; G.targetCar.group.add(ring); G.targetCar.ring = ring;
   }
   updateObjective();
-  banner(MISSIONS[i].title);
+  banner(`MISSION ${i + 1} — ${MISSIONS[i].title.toUpperCase()}`);
+}
+function advanceStage() {
+  const m = MISSIONS[G.missionIdx];
+  G.missionStage += 1;
+  const st = m.stages[G.missionStage];
+  if (st && st.timed) G.missionTimer = st.timed;
+  if (PICKUP_WANTED[G.missionIdx] && G.missionStage === 1) G.wanted = Math.max(G.wanted, PICKUP_WANTED[G.missionIdx]);
+  updateObjective();
 }
 function completeMission() {
   const m = MISSIONS[G.missionIdx];
-  G.money += m.reward; audio.cash();
+  G.money += m.reward;
+  const gain = Math.max(15, Math.round(15 + m.reward / 200));
+  const before = rankFor(G.respect).cur.name;
+  G.respect += gain; STATS.missionsDone += 1;
+  audio.cash();
+  if (rankFor(G.respect).cur.name !== before) { audio.rankUp(); toast(`RANK UP — you are now ${rankFor(G.respect).cur.name}!`); }
   show($('mission-done'), true); G.screen = 'missionDone';
   $('md-title').textContent = 'MISSION COMPLETE';
-  $('md-text').textContent = `${m.title} — you earned $${m.reward}. Total: $${G.money}.`;
+  $('md-text').textContent = `${m.title} — you earned ${fmtMoney(m.reward)} (+${gain} respect). Total: ${fmtMoney(G.money)}.`;
   saveGame();
-  G.missionIdx += 1; G.missionStage = 0; G.hasPackage = false;
+  if (STEAL_SPOTS[G.missionIdx]) G.targetCar = null; // delivered car stays in the world; the next steal job spawns its own
+  G.missionIdx += 1; G.missionStage = 0; G.hasPackage = false; G.missionTimer = 0;
 }
 function updateObjective() {
-  if (G.missionIdx >= MISSIONS.length) { $('objective-title').textContent = 'FREE ROAM'; }
-  else $('objective-title').textContent = MISSIONS[G.missionIdx].title;
+  if (G.missionIdx >= MISSIONS.length) {
+    $('objective-title').textContent = 'FREE ROAM';
+    $('objective-next').textContent = '7/7 missions done · the Bay is yours';
+    setDialog('MARA VOSS · CREW BOSS', 'That is the whole story, Jax. The Bay is yours now — spend it well.');
+  } else {
+    const m = MISSIONS[G.missionIdx];
+    $('objective-title').textContent = `CH.${m.chapter} ${m.chapterName} · MISSION ${G.missionIdx + 1}/7 — ${m.title.toUpperCase()} · STAGE ${G.missionStage + 1}/${m.stages.length} · ${fmtMoney(m.reward)}`;
+    $('objective-next').textContent = m.stages[G.missionStage].next;
+    setDialog(m.dialogWho, m.dialog);
+  }
   $('objective-text').textContent = missionText();
 }
 
 // ---------- wanted / police ----------
 function addWanted(n) {
   G.wanted = clamp(G.wanted + n, 0, 5);
+  STATS.bestWanted = Math.max(STATS.bestWanted, G.wanted);
   G.wantedDecay = 0;
   if (G.wanted > 0) toast(`Wanted level ${G.wanted} — the Bay PD is on you!`);
 }
-function desiredPoliceCars() { return G.wanted >= 1 ? Math.min(G.wanted, 3) : 0; }
+function desiredPoliceCars() { return G.wanted >= 4 ? 4 : G.wanted >= 1 ? Math.min(G.wanted, 3) : 0; }
 function policeCars() { return cars.filter(c => c.isPolice); }
 function spawnPoliceCar() {
   const a = rand() * Math.PI * 2, d = 55 + rand() * 20;
@@ -236,7 +341,7 @@ function updatePolice(dt) {
   // decay: no police near -> wanted drops
   const nearest = Math.min(999, ...pcs.map(c => dist2d(c.group.position.x, c.group.position.z, player.pos.x, player.pos.z)),
     ...cops.filter(c => !c.down).map(c => dist2d(c.group.position.x, c.group.position.z, player.pos.x, player.pos.z)));
-  if (G.wanted > 0 && nearest > 45) { G.wantedDecay += dt; if (G.wantedDecay > 18) { G.wanted -= 1; G.wantedDecay = 0; toast('Heat cooling off… wanted down to ' + G.wanted); } }
+  if (G.wanted > 0 && nearest > 45) { G.wantedDecay += dt; if (G.wantedDecay > 18) { G.wanted -= 1; STATS.copsEscaped += 1; G.wantedDecay = 0; toast('Heat cooling off… wanted down to ' + G.wanted); } }
   else G.wantedDecay = 0;
   audio.setSiren(G.wanted > 0);
 }
@@ -256,8 +361,8 @@ function endRun(kind) {
   G.screen = 'busted';
   $('busted-title').textContent = kind === 'busted' ? 'BUSTED' : 'WASTED';
   $('busted-text').textContent = kind === 'busted'
-    ? `The Bay PD caught you. You lost $${lost} in fines and cooled off at the precinct.`
-    : `You got wasted. Medics patched you up at the hospital — $${lost} in bills.`;
+    ? `The Bay PD caught you. You lost ${fmtMoney(lost)} in fines and cooled off at the precinct.`
+    : `You got wasted. Medics patched you up at the hospital — ${fmtMoney(lost)} in bills.`;
   show($('hud'), false); show($('busted'), true);
   saveGame();
 }
@@ -266,8 +371,13 @@ function endRun(kind) {
 function enterCar(car) {
   G.inCar = true; G.car = car; car.ai = false;
   player.mesh.visible = false;
-  if (!car.isPolice) addWanted(1); // stealing a car
-  if (G.targetCar === car) { G.missionStage = 1; if (G.wanted < 2) G.wanted = 2; updateObjective(); toast('Hot car secured — get it to the chop shop!'); }
+  if (!car.isPolice) { addWanted(1); STATS.carsStolen += 1; } // stealing a car
+  const m = MISSIONS[G.missionIdx];
+  if (m && m.stages[G.missionStage].action === 'steal' && G.targetCar === car) {
+    if (G.missionIdx === 1) { if (G.wanted < 2) G.wanted = 2; }
+    if (G.missionIdx === 4) { if (G.wanted < 2) G.wanted = 2; }
+    advanceStage(); toast('Hot car secured — get it to the chop shop!');
+  }
   audio.unlock();
   toast(car.isPolice ? 'You jacked a police cruiser!' : 'Car stolen — +1 wanted star');
 }
@@ -304,8 +414,8 @@ function shoot() {
   };
   peds.forEach(p => consider(p, false)); cops.forEach(c => consider(c, true));
   if (best) {
-    if (best.isCop) { best.p.hp -= 1; if (best.p.hp <= 0) { best.p.down = true; best.p.downT = 0; addWanted(1); } }
-    else { best.p.down = true; best.p.downT = 0; best.p.state = 'down'; addWanted(1); toast('You shot a pedestrian — +1 wanted'); }
+    if (best.isCop) { best.p.hp -= 1; if (best.p.hp <= 0) { best.p.down = true; best.p.downT = 0; STATS.takenOut += 1; addWanted(1); } }
+    else { best.p.down = true; best.p.downT = 0; best.p.state = 'down'; STATS.takenOut += 1; addWanted(1); toast('You shot a pedestrian — +1 wanted'); }
   }
 }
 function punch() {
@@ -317,8 +427,8 @@ function punch() {
   };
   peds.forEach(p => consider(p, false)); cops.forEach(c => consider(c, true));
   if (best) {
-    if (best.isCop) { best.p.hp -= 1; if (best.p.hp <= 0) { best.p.down = true; best.p.downT = 0; } addWanted(1); toast('You punched a cop — +1 wanted'); }
-    else { best.p.down = true; best.p.downT = 0; best.p.state = 'down'; addWanted(1); toast('You punched a pedestrian — +1 wanted'); }
+    if (best.isCop) { best.p.hp -= 1; if (best.p.hp <= 0) { best.p.down = true; best.p.downT = 0; STATS.takenOut += 1; } addWanted(1); toast('You punched a cop — +1 wanted'); }
+    else { best.p.down = true; best.p.downT = 0; best.p.state = 'down'; STATS.takenOut += 1; addWanted(1); toast('You punched a pedestrian — +1 wanted'); }
   }
 }
 
@@ -384,16 +494,22 @@ canvas.addEventListener('touchmove', e => {
 canvas.addEventListener('touchend', e => { for (const t of e.changedTouches) if (camTouch && t.identifier === camTouch.id) camTouch = null; });
 
 function onInteract() {
-  // mission pickup / delivery points
+  // mission pickup / delivery points (generic over the stage action)
+  const m = MISSIONS[G.missionIdx];
   const t = missionTarget();
-  if (t && dist2d(player.pos.x, player.pos.z, t.x, t.z) < 5) {
-    const m = MISSIONS[G.missionIdx];
-    if (G.missionIdx === 0 && G.missionStage === 0) { G.hasPackage = true; G.missionStage = 1; audio.pickup(); updateObjective(); toast('Package picked up — take it to Mara\'s garage'); return; }
-    if (G.missionIdx === 0 && G.missionStage === 1) { completeMission(); return; }
-    if (G.missionIdx === 2 && G.missionStage === 0) { G.hasPackage = true; G.missionStage = 1; G.missionTimer = 90; audio.pickup(); updateObjective(); toast('Package grabbed — 90 seconds to the harbor!'); return; }
-    if (G.missionIdx === 2 && G.missionStage === 1) { completeMission(); return; }
+  if (m && t) {
+    const st = m.stages[G.missionStage];
+    const near = dist2d(player.pos.x, player.pos.z, t.x, t.z) < 5 ||
+      (G.inCar && G.car && dist2d(G.car.group.position.x, G.car.group.position.z, t.x, t.z) < 5);
+    if (near && st.action === 'pickup') {
+      G.hasPackage = true; audio.pickup(); advanceStage();
+      toast(st.timed ? `Package grabbed — ${st.timed} seconds!` : 'Package picked up');
+      return;
+    }
+    if (near && st.action === 'deliver') { completeMission(); return; }
   }
-  if (G.missionIdx === 1 && G.missionStage === 1 && G.inCar && G.car === G.targetCar &&
+  // drive-in delivery: rolling the target car into the chop shop completes a steal job
+  if (m && m.stages[G.missionStage].action === 'deliver' && G.inCar && G.car === G.targetCar &&
       dist2d(G.car.group.position.x, G.car.group.position.z, city.chopShop.x, city.chopShop.z) < 8) { completeMission(); return; }
   // enter / exit car
   if (G.inCar) { exitCar(); return; }
@@ -408,29 +524,33 @@ function onInteract() {
 
 // ---------- save ----------
 function saveGame() {
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ money: G.money, missionIdx: G.missionIdx, x: player.pos.x, z: player.pos.z })); } catch {}
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ money: G.money, missionIdx: G.missionIdx, x: player.pos.x, z: player.pos.z, respect: G.respect, day: G.day, minutes: G.minutes, stats: STATS })); } catch {}
 }
 function loadSave() {
   try { const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); return s; } catch { return null; }
+}
+function applySave(s) {
+  if (!s) return;
+  G.money = s.money ?? 250; G.missionIdx = Math.min(s.missionIdx ?? 0, MISSIONS.length);
+  G.respect = s.respect ?? 0; G.day = s.day ?? 4; G.minutes = s.minutes ?? 18 * 60 + 16;
+  if (s.stats) Object.assign(STATS, s.stats);
+  player.pos.set(s.x ?? city.spawn.x, 0, s.z ?? city.spawn.z);
 }
 
 // ---------- screens ----------
 function startGame(fresh) {
   audio.unlock();
-  if (fresh) { G.money = 250; G.missionIdx = 0; player.pos.set(city.spawn.x, 0, city.spawn.z); }
-  else {
-    const s = loadSave();
-    if (s) { G.money = s.money; G.missionIdx = Math.min(s.missionIdx, 2); player.pos.set(s.x, 0, s.z); }
-  }
+  if (fresh) { G.money = 250; G.missionIdx = 0; G.respect = 0; G.day = 4; G.minutes = 18 * 60 + 16; Object.assign(STATS, { carsStolen: 0, copsEscaped: 0, kmDriven: 0, takenOut: 0, geckos: 0, missionsDone: 0, bestWanted: 0 }); player.pos.set(city.spawn.x, 0, city.spawn.z); }
+  else applySave(loadSave());
   G.health = 100; G.wanted = 0; G.ammo = 12; G.missionStage = 0; G.hasPackage = false; G.missionTimer = 0;
   player.mesh.position.copy(player.pos); player.mesh.visible = true;
   G.inCar = false; G.car = null;
   show($('title'), false); show($('pause'), false); show($('busted'), false); show($('mission-done'), false); show($('hud'), true); show($('objective'), true);
   G.screen = 'play';
-  startMission(G.missionIdx);
+  if (G.missionIdx < MISSIONS.length) startMission(G.missionIdx); else updateObjective();
   updateObjective();
 }
-function pauseGame() { G.screen = 'pause'; show($('pause'), true); saveGame(); }
+function pauseGame() { G.screen = 'pause'; fillMapScreen(); show($('pause'), true); saveGame(); }
 function resumeGame() { G.screen = 'play'; show($('pause'), false); }
 $('btn-new').onclick = () => startGame(true);
 $('btn-continue').onclick = () => startGame(false);
@@ -441,12 +561,81 @@ $('btn-md').onclick = () => {
   show($('mission-done'), false); G.screen = 'play';
   if (G.missionIdx < MISSIONS.length) startMission(G.missionIdx); else updateObjective();
 };
-function refreshContinue() { $('btn-continue').disabled = !loadSave(); }
+function refreshContinue() { $('btn-continue').disabled = !loadSave(); fillSlots(); }
+function fillSlots() {
+  const s = loadSave();
+  if (!s) { $('slot-1-text').textContent = 'No save yet'; return; }
+  const done = Math.min(s.missionIdx ?? 0, 7);
+  const pct = Math.round(done / 7 * 100);
+  const next = MISSIONS[done] ? `CH.${MISSIONS[done].chapter} — ${MISSIONS[done].title.toUpperCase()}` : 'STORY COMPLETE';
+  const act = done < 2 ? 'ACT I' : done < 4 ? 'ACT II' : done < 6 ? 'ACT III' : 'ACT IV';
+  const mins = s.minutes ?? 18 * 60 + 16;
+  $('slot-1-text').innerHTML = `<span class="act">SLOT 1 · ${act} — ${next}</span><br>${pct}% complete · ${done}/7 missions · ${fmtMoney(s.money ?? 250)} · DAY ${s.day ?? 4} · ${fmtClock(mins)}<br>Golden Geckos ${(s.stats && s.stats.geckos) || 0}/20 · Rank ${rankFor(s.respect ?? 0).cur.name}`;
+}
 refreshContinue();
+
+// ---------- MAP & STATS screen ----------
+function fillMapScreen() {
+  const done = Math.min(G.missionIdx, 7);
+  $('map-missions').innerHTML = '<h3>STORY MISSIONS · 7 JOBS · 5 CHAPTERS</h3>' + MISSIONS.map((m, i) => {
+    const cls = i < done ? 'done' : i === done ? 'next' : 'locked';
+    const tag = i < done ? 'DONE ✓' : i === done ? 'NEXT' : 'LOCKED';
+    return `<div class="mrow ${cls}"><span>CH.${m.chapter} · ${m.title.toUpperCase()}</span><span class="pay">${fmtMoney(m.reward)} · ${tag}</span></div>`;
+  }).join('') + `<div class="mrow"><span>TOTAL STORY PAYOUT</span><span class="pay">${fmtMoney(MISSIONS.reduce((a, m) => a + m.reward, 0))}</span></div>`;
+  const friendly = city.districts.filter(d => d.standing >= 65).length;
+  const { cur, next } = rankFor(G.respect);
+  $('map-stats').innerHTML = `<h3>CAREER STATS — JAX MARLOWE · ${cur.name}</h3>` +
+    `<div class="mrow"><span>Cash</span><span>${fmtMoney(G.money)}</span></div>` +
+    `<div class="mrow"><span>Respect</span><span>${G.respect}${next ? ` / ${next.at} to ${next.name}` : ' · MAX'}</span></div>` +
+    `<div class="mrow"><span>Cars stolen</span><span>${STATS.carsStolen}</span></div>` +
+    `<div class="mrow"><span>Cops escaped</span><span>${STATS.copsEscaped}</span></div>` +
+    `<div class="mrow"><span>Distance driven</span><span>${STATS.kmDriven.toFixed(1)} km</span></div>` +
+    `<div class="mrow"><span>People taken out</span><span>${STATS.takenOut}</span></div>` +
+    `<div class="mrow"><span>Districts friendly</span><span>${friendly}/7</span></div>` +
+    `<div class="mrow"><span>Best wanted level</span><span>${STATS.bestWanted} ★</span></div>`;
+  $('map-collect').innerHTML = `<h3>COLLECTIBLES &amp; SAVE</h3>` +
+    `<div class="mrow"><span>Golden Geckos</span><span>${STATS.geckos}/20</span></div>` +
+    `<div class="mrow"><span>Missions done</span><span>${STATS.missionsDone}/7</span></div>` +
+    `<div class="mrow"><span>Day / time</span><span>DAY ${G.day} · ${fmtClock(G.minutes)}</span></div>` +
+    `<div class="mrow"><span>Save slot 1</span><span>${loadSave() ? 'SAVED · autosave on pause' : 'NO SAVE YET'}</span></div>`;
+  drawPauseMap();
+}
+function drawPauseMap() {
+  const cv = $('map-canvas'), c = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  const toX = x => (x + 215) / 430 * W, toZ = z => (z + 215) / 430 * H;
+  c.clearRect(0, 0, W, H); c.fillStyle = '#141021'; c.fillRect(0, 0, W, H);
+  const cols = ['#3a2f5c', '#2f5c3a', '#5c4a2f', '#4a2f4d', '#2f3d5c', '#5c2f3d', '#37304a'];
+  city.districts.forEach((d, i) => {
+    c.fillStyle = cols[i % cols.length];
+    c.fillRect(toX(d.minX), toZ(d.minZ), toX(d.maxX) - toX(d.minX), toZ(d.maxZ) - toZ(d.minZ));
+  });
+  c.fillStyle = '#0e4a6e'; c.fillRect(toX(185), 0, W - toX(185), H); // harbour water over the east strip
+  city.districts.forEach((d) => { // labels last, so the water never clips them
+    c.fillStyle = '#fff'; c.font = 'bold 11px Arial'; c.textAlign = 'center';
+    c.fillText(d.name, (toX(d.minX) + toX(d.maxX)) / 2, (toZ(d.minZ) + toZ(d.maxZ)) / 2 - 4);
+    c.fillStyle = '#ffd23d'; c.font = '10px Arial';
+    c.fillText(`${d.mood} ${d.standing}`, (toX(d.minX) + toX(d.maxX)) / 2, (toZ(d.minZ) + toZ(d.maxZ)) / 2 + 10);
+  });
+  c.strokeStyle = '#6a6285'; c.lineWidth = 2;
+  for (const r of city.roadLines) {
+    c.beginPath(); c.moveTo(toX(-200), toZ(r)); c.lineTo(toX(200), toZ(r)); c.stroke();
+    c.beginPath(); c.moveTo(toX(r), toZ(-200)); c.lineTo(toX(r), toZ(200)); c.stroke();
+  }
+  // geckos (gold dots), mission target (gold ring), police (red), player (green)
+  for (const gk of geckos) if (!gk.taken) { c.fillStyle = '#ffd23d'; c.beginPath(); c.arc(toX(gk.x), toZ(gk.z), 3, 0, 7); c.fill(); }
+  const t = missionTarget();
+  if (t) { c.strokeStyle = '#ffd23d'; c.lineWidth = 3; c.beginPath(); c.arc(toX(t.x), toZ(t.z), 9, 0, 7); c.stroke(); }
+  c.fillStyle = '#ff2222';
+  for (const pc of policeCars()) { c.beginPath(); c.arc(toX(pc.group.position.x), toZ(pc.group.position.z), 4, 0, 7); c.fill(); }
+  c.fillStyle = '#7dff9a'; c.beginPath(); c.arc(toX(player.pos.x), toZ(player.pos.z), 5, 0, 7); c.fill();
+}
 
 // ---------- per-frame updates ----------
 function updatePlayer(dt) {
   const run = keys.has('ShiftLeft') || keys.has('ShiftRight');
+  // clock: 1 game minute every 2 seconds of play
+  G.minutes += dt * 0.5; if (G.minutes >= 1440) { G.minutes -= 1440; G.day += 1; }
   if (G.inCar && G.car) {
     const car = G.car;
     const accel = clamp((keys.has('KeyW') ? 1 : keys.has('KeyS') ? -0.6 : 0) + touch.y, -1, 1);
@@ -470,10 +659,11 @@ function updatePlayer(dt) {
     car.group.rotation.y = car.heading;
     player.pos.copy(car.group.position);
     G.speed = Math.abs(car.speed) * 2.2;
+    STATS.kmDriven += Math.abs(car.speed) * dt / 1000;
     // hit peds while driving
     for (const p of peds) {
       if (!p.down && dist2d(p.group.position.x, p.group.position.z, car.group.position.x, car.group.position.z) < 2.2 && Math.abs(car.speed) > 3) {
-        p.down = true; p.downT = 0; p.state = 'down'; addWanted(1); car.speed *= 0.7; audio.punch();
+        p.down = true; p.downT = 0; p.state = 'down'; STATS.takenOut += 1; addWanted(1); car.speed *= 0.7; audio.punch();
       }
     }
     audio.setEngine(Math.abs(car.speed) / 28, true);
@@ -502,18 +692,24 @@ function updatePlayer(dt) {
     G.speed = 0;
     audio.setEngine(0, false);
   }
-  // mission 2 drive-in delivery: rolling the target car into the chop shop
-  // completes it (no E press needed — a fast car would otherwise overshoot
-  // the 8 m radius before the player can press E)
-  if (G.missionIdx === 1 && G.missionStage === 1 && G.inCar && G.car === G.targetCar &&
+  // Golden Gecko pickup (on foot or in car, within 2.5 m)
+  for (const gk of geckos) {
+    if (!gk.taken && dist2d(player.pos.x, player.pos.z, gk.x, gk.z) < 2.5) {
+      gk.taken = true; gk.mesh.visible = false; STATS.geckos += 1; audio.gecko();
+      toast(`Golden Gecko ${STATS.geckos}/20 — the collector pays for these`);
+    }
+  }
+  // steal-job drive-in delivery: rolling the target car into the chop shop completes it
+  const m = MISSIONS[G.missionIdx];
+  if (m && m.stages[G.missionStage].action === 'deliver' && G.inCar && G.car === G.targetCar &&
       dist2d(G.car.group.position.x, G.car.group.position.z, city.chopShop.x, city.chopShop.z) < 8) {
     completeMission();
     return;
   }
-  // mission timer
-  if (G.missionIdx === 2 && G.missionStage === 1 && G.missionTimer > 0) {
+  // mission timer (any timed stage)
+  if (m && m.stages[G.missionStage].timed && G.missionTimer > 0) {
     G.missionTimer -= dt;
-    if (G.missionTimer <= 0) { G.missionStage = 0; G.hasPackage = false; G.missionTimer = 0; updateObjective(); banner('TOO SLOW — run it again'); toast('Harbor Run failed — back to the garage to retry'); }
+    if (G.missionTimer <= 0) { G.missionStage = 0; G.hasPackage = false; G.missionTimer = 0; updateObjective(); banner('TOO SLOW — run it again'); toast('Timed job failed — back to the start to retry'); }
   }
   // health regen when calm
   if (G.wanted === 0 && G.health < 100) G.health = Math.min(100, G.health + 2 * dt);
@@ -651,12 +847,13 @@ function updateMarker(dt) {
     markerArrow.rotation.y = G.time * 2;
   }
   if (G.targetCar && G.targetCar.ring) G.targetCar.ring.rotation.z = G.time * 1.5;
+  for (const gk of geckos) if (!gk.taken) gk.mesh.position.y = 1.2 + Math.sin(G.time * 2 + gk.x) * 0.25;
 }
 
 // ---------- camera ----------
 function updateCamera(dt) {
   let focus, back;
-  if (SHOT === 'start') { // slow orbit over the city for the title shot
+  if (SHOT === 'start' || SHOT === 'title') { // slow orbit over the city for the title shot
     const a = G.time * 0.05;
     camera.position.set(Math.sin(a) * 160, 90, Math.cos(a) * 160);
     camera.lookAt(0, 10, 0); return;
@@ -698,11 +895,15 @@ function drawMinimap() {
   mm.fillStyle = '#ff2222';
   for (const c of policeCars()) { mm.beginPath(); mm.arc(toX(c.group.position.x), toZ(c.group.position.z), 3.5, 0, 7); mm.fill(); }
   for (const c of cops) if (!c.down) { mm.beginPath(); mm.arc(toX(c.group.position.x), toZ(c.group.position.z), 2.5, 0, 7); mm.fill(); }
+  if (heli.group.visible) { mm.fillStyle = '#ffd23d'; mm.beginPath(); mm.arc(toX(heli.group.position.x), toZ(heli.group.position.z), 4, 0, 7); mm.fill(); }
   // player arrow
   mm.save(); mm.translate(toX(player.pos.x), toZ(player.pos.z));
   mm.rotate(G.inCar && G.car ? Math.PI - G.car.heading : Math.PI - player.heading);
   mm.fillStyle = '#7dff9a'; mm.beginPath(); mm.moveTo(0, -7); mm.lineTo(5, 6); mm.lineTo(-5, 6); mm.closePath(); mm.fill();
   mm.restore();
+  const d = districtAt(player.pos.x, player.pos.z);
+  mm.fillStyle = '#fff'; mm.font = 'bold 10px Arial'; mm.textAlign = 'center';
+  mm.fillText(d.name, S / 2, 14);
 }
 let hudT = 0;
 function updateHUD(dt) {
@@ -716,36 +917,140 @@ function updateHUD(dt) {
   const driving = G.inCar && G.car;
   show($('speedo'), !!driving);
   if (driving) $('speed-text').textContent = Math.round(Math.abs(G.car.speed) * 2.2);
-  if (G.missionIdx === 2 && G.missionStage === 1 && G.missionTimer > 0) {
+  const m = MISSIONS[G.missionIdx];
+  if (m && m.stages[G.missionStage].timed && G.missionTimer > 0) {
     $('objective-text').textContent = missionText() + ` (${Math.ceil(G.missionTimer)}s left)`;
   }
+  // clock + district
+  $('clock-text').textContent = `DAY ${G.day} · ${fmtClock(G.minutes)}`;
+  const d = districtAt(player.pos.x, player.pos.z);
+  $('district-text').textContent = `${d.name} · ${d.mood} ${d.standing}`;
+  // weapons: P9 ammo + selected slot
+  $('ammo-text').textContent = G.ammo;
+  $('wslot-0').classList.toggle('sel', G.ammo <= 0);
+  $('wslot-1').classList.toggle('sel', G.ammo > 0);
+  // vehicle card + rank
+  show($('vehicle-card'), true);
+  $('vehicle-name').textContent = driving ? `${G.car.name} · ${G.car.condition}%` : 'ON FOOT · P9 · 12 ROUNDS';
+  const { cur, next } = rankFor(G.respect);
+  $('rank-line').textContent = `${cur.name} · ${G.respect}${next ? '/' + next.at : ''} RESPECT`;
+  $('respect-bar').style.width = (next ? clamp(G.respect / next.at * 100, 0, 100) : 100) + '%';
+  // dispatch panel: named units + role + distance
+  const rows = [];
+  for (const pc of policeCars()) {
+    const dist = dist2d(pc.group.position.x, pc.group.position.z, player.pos.x, player.pos.z);
+    const role = dist < 10 ? 'RAMMING' : dist < 30 ? 'PURSUIT' : 'CLOSING IN';
+    rows.push({ name: pc.unit || 'TARPON', role, dist });
+  }
+  if (heli.group.visible) rows.push({ name: 'AIR ONE', role: 'SPOTLIGHT', dist: dist2d(heli.group.position.x, heli.group.position.z, player.pos.x, player.pos.z) });
+  for (const c of cops) if (!c.down) rows.push({ name: c.guard ? 'GUARD' : 'FOOT UNIT', role: 'ON FOOT', dist: dist2d(c.group.position.x, c.group.position.z, player.pos.x, player.pos.z) });
+  rows.sort((a, b) => a.dist - b.dist);
+  const shown = rows.slice(0, 6);
+  $('dispatch-title').textContent = `BAY PD RESPONSE · ${rows.length} UNIT${rows.length === 1 ? '' : 'S'}${G.wanted >= 4 ? ' · AIR UNIT DEPLOYED' : ''}`;
+  $('dispatch-rows').innerHTML = rows.length
+    ? shown.map(r => `<div class="drow"><b>${r.name}</b><span class="role">${r.role}</span><span class="dist">${fmtDist(r.dist)}</span></div>`).join('') +
+      (rows.length > 6 ? `<div class="drow"><span>+${rows.length - 6} more units</span></div>` : '')
+    : '<div class="drow"><span>ALL CLEAR — no heat on you</span></div>';
 }
 
 // ---------- shot staging ----------
+// Staging must show a living street: traffic + peds are spread over the whole
+// 400 m city, so cluster 6+ cars and 10 peds around the camera focus per shot.
+function clusterNear(x, z) {
+  const roadZ = city.roadLines.reduce((a, b) => Math.abs(b - z) < Math.abs(a - z) ? b : a);
+  const aiCars = cars.filter(c => c.ai && !c.isPolice);
+  aiCars.slice(0, 6).forEach((c, i) => {
+    const along = x + [-18, -9, 9, 18, -27, 27][i];
+    c.group.position.set(along, 0, roadZ + 2.5);
+    c.heading = i % 2 ? Math.PI : 0; c.group.rotation.y = c.heading; c.speed = 6; c.wp = 0;
+  });
+  const parked = cars.filter(c => !c.ai && !c.isPolice);
+  parked.slice(0, 4).forEach((c, i) => {
+    c.group.position.set(x + [-14, 14, -22, 22][i], 0, roadZ - 2.5);
+    c.heading = 0; c.group.rotation.y = 0;
+  });
+  peds.slice(0, 10).forEach((p, i) => {
+    const a = i * 0.63, r = 6 + (i % 3) * 4;
+    p.group.position.set(x + Math.cos(a) * r, 0, z + Math.sin(a) * r);
+    p.tx = p.group.position.x; p.tz = p.group.position.z; p.state = 'walk';
+  });
+}
 function stageShot(name) {
   G.screen = 'play';
   show($('title'), false); show($('hud'), true); show($('objective'), true);
-  if (name === 'start') {
+  if (name === 'start' || name === 'title') {
+    if (name === 'title') {
+      // title shot: a save with real progress, so the slots show act / % / cash
+      try {
+        localStorage.setItem(SAVE_KEY, JSON.stringify({ money: 12650, missionIdx: 3, x: -55, z: 145, respect: 290, day: 9, minutes: 18 * 60 + 23, stats: { carsStolen: 41, copsEscaped: 12, kmDriven: 48.2, takenOut: 23, geckos: 12, missionsDone: 3 } }));
+      } catch {}
+      refreshContinue();
+    }
     G.screen = 'title'; show($('title'), true); show($('hud'), false);
     player.pos.set(city.spawn.x, 0, city.spawn.z);
     return;
   }
+  if (name === 'map') {
+    // MAP/STATS shot: mid-story progress, pause screen open, HUD hidden behind it
+    G.money = 12650; G.respect = 290; G.day = 9; G.minutes = 18 * 60 + 23;
+    Object.assign(STATS, { carsStolen: 41, copsEscaped: 12, kmDriven: 48.2, takenOut: 23, geckos: 12, missionsDone: 3, bestWanted: 4 });
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ money: 12650, missionIdx: 3, x: -55, z: 145, respect: 290, day: 9, minutes: 18 * 60 + 23, stats: STATS })); } catch {}
+    startMission(3);
+    pauseGame(); show($('hud'), false);
+    return;
+  }
   startMission(0);
-  if (name === 'drive') {
+  if (name === 'chase') {
+    // Shot 1: late-game chase, Mission 6 Banco Lucero, wanted 4 + helicopter, dusk.
+    G.money = 19430; G.respect = 290; G.day = 9; G.minutes = 18 * 60 + 40;
+    Object.assign(STATS, { carsStolen: 41, copsEscaped: 12, kmDriven: 48.2, takenOut: 23, geckos: 12, missionsDone: 5 });
+    startMission(5); G.missionStage = 1; G.hasPackage = true; G.missionTimer = 120; updateObjective();
+    const car = spawnCar(45, -5, Math.PI, 0xc0392b, { name: 'VIREO GT', condition: 84 });
+    player.pos.set(45, 0, -5); enterCar(car); G.wanted = 4; car.speed = 14;
+    for (let i = 0; i < 4; i++) {
+      const pc = spawnPoliceCar();
+      pc.group.position.set([33, 57, 30, 60][i], 0, [-18, -16, -2, -4][i]); pc.speed = 16;
+    }
+    G.camYaw = Math.PI;
+    clusterNear(45, -5);
+  } else if (name === 'shootout') {
+    // Shot 2: night shootout in Old Pasaru market — guards with red markers,
+    // fleeing peds, traffic, tracer fire. Mission 4, stage 2/2.
+    G.money = 6420; G.respect = 140; G.day = 4; G.minutes = 22 * 60 + 10;
+    startMission(3); G.missionStage = 1; G.hasPackage = true; G.missionTimer = 120; updateObjective();
+    player.pos.set(-105, 0, 45);
+    player.heading = Math.atan2(-88 - player.pos.x, 30 - player.pos.z);
+    player.mesh.position.copy(player.pos); player.mesh.rotation.y = player.heading;
+    G.camYaw = player.heading; G.ammo = 12;
+    // 3 guards with red markers ahead of the player
+    const guardPos = [[-92, 32], [-84, 24], [-112, 28]];
+    for (const [gx, gz] of guardPos) spawnCop(gx, gz, true);
+    // one guard already down, one tracer line in the air (frozen firefight)
+    const down = spawnCop(-98, 20, true); down.down = true; down.downT = 0; down.group.rotation.x = Math.PI / 2;
+    const geo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(player.pos.x, 1.6, player.pos.z),
+      new THREE.Vector3(-92, 1.4, 32),
+    ]);
+    const tr = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffe9a8 })); scene.add(tr);
+    // peds fleeing the gunfire
+    peds.slice(0, 8).forEach(p => { p.state = 'flee'; p.fleeT = 5; });
+    clusterNear(-105, 45);
+    peds.slice(0, 8).forEach(p => { p.state = 'flee'; p.fleeT = 5; });
+  } else if (name === 'drive') {
     const car = spawnCar(-5, 45, 0, 0xc0392b, {});
     player.pos.set(-5, 0, 45); enterCar(car); G.wanted = 0; car.speed = 14;
-    G.camYaw = Math.PI;
+    G.camYaw = Math.PI; clusterNear(-5, 45);
   } else if (name === 'wanted') {
     const car = spawnCar(0, 0, 0, 0x2980b9, {});
     player.pos.set(0, 0, 0); enterCar(car); G.wanted = 3; car.speed = 12;
     for (let i = 0; i < 3; i++) { const pc = spawnPoliceCar(); pc.group.position.set([-12, 14, -18][i], 0, [-14, 10, 16][i]); pc.speed = 16; }
-    G.camYaw = Math.PI;
+    G.camYaw = Math.PI; clusterNear(0, 0);
   } else if (name === 'mission') {
     player.pos.set(city.pickup.x - 6, 0, city.pickup.z - 4);
     player.heading = Math.atan2(city.pickup.x - player.pos.x, city.pickup.z - player.pos.z);
     player.mesh.position.copy(player.pos);
     player.mesh.rotation.y = player.heading;
-    G.camYaw = player.heading;
+    G.camYaw = player.heading; clusterNear(city.pickup.x, city.pickup.z);
   }
   updateObjective();
   updateHUD(1);
@@ -761,14 +1066,14 @@ function frame(now) {
   G.time += dt;
   if (tracer) { tracerT -= dt; if (tracerT <= 0) { scene.remove(tracer); tracer = null; } }
   if (!SHOT && G.screen === 'play') {
-    updatePlayer(dt); updateTraffic(dt); updatePoliceCars(dt); updatePeds(dt); updateCops(dt); updatePolice(dt); updateMarker(dt);
+    updatePlayer(dt); updateTraffic(dt); updatePoliceCars(dt); updatePeds(dt); updateCops(dt); updatePolice(dt); updateMarker(dt); updateHeli(dt);
   } else if (SHOT) {
     // staged scene: gentle life (traffic + peds move) but no player input / wanted logic
-    updateTraffic(dt); updatePeds(dt); updateMarker(dt);
-    if (SHOT === 'wanted') updatePoliceCars(dt);
+    updateTraffic(dt); updatePeds(dt); updateMarker(dt); updateHeli(dt);
+    if (SHOT === 'wanted' || SHOT === 'chase') updatePoliceCars(dt);
     // drive shot: keep the staged car rolling slowly down the road
-    if (SHOT === 'drive' && G.car) {
-      G.car.speed = 12;
+    if ((SHOT === 'drive' || SHOT === 'chase') && G.car) {
+      G.car.speed = SHOT === 'chase' ? 14 : 12;
       const nx = G.car.group.position.x + Math.sin(G.car.heading) * G.car.speed * dt;
       const nz = G.car.group.position.z + Math.cos(G.car.heading) * G.car.speed * dt;
       if (!pointInCollider(nx, nz, 1.4)) { G.car.group.position.x = nx; G.car.group.position.z = nz; }
@@ -794,4 +1099,4 @@ if (SHOT) {
 }
 
 // debug handle for play-testing
-window.__game = { G, player, cars, peds, cops, audio, renderer, touch, IS_TOUCH, startGame, missionTarget, saveGame, loadSave };
+window.__game = { G, STATS, MISSIONS, player, cars, peds, cops, geckos, heli, audio, renderer, touch, IS_TOUCH, startGame, pauseGame, resumeGame, missionTarget, saveGame, loadSave, rankFor, districtAt };

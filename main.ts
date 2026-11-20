@@ -5,9 +5,11 @@
 // /output and writes /output/dossier.json, the summary the judge reads, with the vendored
 // make.fun library. The game itself is Neon Bay, an original open-world crime game: a low-poly
 // dusk city to walk and drive through, traffic and pedestrians, a 5-star wanted system with
-// police chases, three story missions for Mara Voss's crew, combat, a minimap HUD, saves and
-// procedural WebAudio. Put 4 JPEG screenshots in screenshots/ (the first by name is the cover)
-// and run it.
+// police chases and a Bay PD helicopter at wanted 4+, seven story missions in five chapters
+// for Mara Voss's crew, combat, a dense named HUD (police dispatch, weapon wheel, radio,
+// district standing, rank and respect), a full MAP & STATS pause screen, 20 Golden Gecko
+// collectibles, saves and procedural WebAudio. Put 4 JPEG screenshots in screenshots/
+// (the first by name is the cover) and run it.
 //
 // Serve it locally with `node serve.ts`, then open http://localhost:8080.
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:

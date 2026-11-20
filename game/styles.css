@@ -14,9 +14,39 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1030; fon
 #objective { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); background: rgba(10,5,30,.72); border: 1px solid #ff2d78; border-left: 5px solid #ff2d78; padding: 8px 16px; border-radius: 4px; max-width: 520px; text-align: center; }
 #objective-title { display: block; font-weight: 800; color: #ffb3d1; letter-spacing: 1px; font-size: 13px; text-transform: uppercase; }
 #objective-text { font-size: 15px; }
+#objective-next { display: block; font-size: 12px; color: #ffd23d; margin-top: 2px; }
+/* top-right: dispatch + clock/district + radio */
+#top-right { position: absolute; top: 14px; right: 14px; width: 248px; text-align: left; }
+#dispatch { background: rgba(10,5,30,.72); border: 1px solid #3d3552; border-left: 4px solid #ff2222; border-radius: 4px; padding: 6px 10px; font-size: 12px; line-height: 1.55; }
+#dispatch-title { font-weight: 800; letter-spacing: 1px; color: #ff8a8a; font-size: 11px; }
+#dispatch-rows .drow { display: flex; justify-content: space-between; gap: 6px; white-space: nowrap; }
+#dispatch-rows .drow b { color: #fff; }
+#dispatch-rows .drow .role { color: #ffd23d; }
+#dispatch-rows .drow .dist { color: #9fd8ff; }
+#clock-line, #radio-line { margin-top: 6px; background: rgba(10,5,30,.72); border: 1px solid #3d3552; border-radius: 4px; padding: 5px 10px; font-size: 12px; display: flex; justify-content: space-between; gap: 8px; }
+#clock-text { font-weight: 800; color: #fff; }
+#district-text { color: #7dff9a; font-weight: 700; }
+#radio-station { font-weight: 800; color: #00e5ff; }
+#radio-song { color: #e8e0ff; }
+/* vehicle + rank card, above the speedometer */
+#vehicle-card { position: absolute; right: 14px; bottom: 262px; width: 220px; background: rgba(10,5,30,.72); border: 1px solid #3d3552; border-radius: 4px; padding: 6px 10px; font-size: 12px; text-align: right; }
+#vehicle-name { display: block; font-weight: 800; color: #fff; }
+#rank-line { display: block; color: #ffd23d; font-weight: 700; margin-top: 2px; }
+#respect-wrap { height: 7px; background: rgba(255,255,255,.15); border-radius: 4px; margin-top: 4px; overflow: hidden; }
+#respect-bar { height: 100%; width: 0%; background: linear-gradient(90deg,#ffd23d,#ff7a3d); }
 #speedo { position: absolute; right: 18px; bottom: 200px; font-size: 42px; font-weight: 800; text-shadow: 0 2px 6px #000; }
 #speedo small { font-size: 14px; color: #ffd23d; }
 #minimap { position: absolute; right: 14px; bottom: 14px; width: 180px; height: 180px; border: 2px solid rgba(255,255,255,.5); border-radius: 50%; background: #141021; box-shadow: 0 0 0 4px rgba(0,0,0,.4); }
+/* weapon wheel: 4 slots bottom-left, above the hint */
+#weapons { position: absolute; left: 14px; bottom: 44px; display: flex; gap: 6px; }
+.wslot { background: rgba(10,5,30,.72); border: 1px solid #3d3552; border-radius: 4px; padding: 5px 9px; font-size: 12px; font-weight: 700; color: #fff; }
+.wslot b { color: #ffd23d; margin-right: 3px; }
+.wslot.sel { border-color: #ffd23d; box-shadow: 0 0 8px rgba(255,210,61,.5); }
+.wslot.locked { color: #9a93b8; }
+.wslot.locked b { color: #9a93b8; }
+/* character dialog box, bottom-centre */
+#dialog { position: absolute; bottom: 108px; left: 50%; transform: translateX(-50%); max-width: 560px; background: rgba(10,5,30,.82); border: 1px solid #00e5ff; border-left: 5px solid #00e5ff; border-radius: 4px; padding: 8px 14px; font-size: 14px; }
+#dialog-who { display: block; font-size: 11px; letter-spacing: 1px; color: #00e5ff; margin-bottom: 2px; }
 #hint { position: absolute; bottom: 14px; left: 14px; font-size: 12px; color: rgba(255,255,255,.75); text-shadow: 0 1px 2px #000; background: rgba(0,0,0,.35); padding: 4px 8px; border-radius: 4px; }
 #banner { position: absolute; top: 38%; left: 50%; transform: translate(-50%,-50%); font-size: 44px; font-weight: 900; letter-spacing: 3px; color: #fff; text-shadow: 0 0 18px #ff2d78, 0 3px 8px #000; text-align: center; }
 #toast { position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.7); padding: 8px 18px; border-radius: 20px; font-size: 15px; }
@@ -32,6 +62,24 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1030; fon
 .buttons button:disabled { opacity: .35; cursor: default; }
 .controls { font-size: 13px; color: #bdb2e8; }
 .foot { font-size: 11px; color: #7d739e; margin-top: 30px; }
+/* title save slots */
+#save-slots { display: flex; gap: 12px; margin: 6px 0 4px; }
+.slot { width: 250px; background: rgba(10,5,30,.72); border: 1px solid #3d3552; border-radius: 6px; padding: 10px 12px; text-align: left; font-size: 12px; line-height: 1.6; color: #e8e0ff; }
+.slot b { display: block; color: #ffd23d; letter-spacing: 1px; font-size: 11px; }
+.slot .act { color: #fff; font-weight: 800; font-size: 13px; }
+/* MAP & STATS pause screen */
+#pause h2 { font-size: 40px; margin-bottom: 12px; }
+#map-grid { display: flex; gap: 16px; align-items: flex-start; text-align: left; }
+#map-canvas { border: 2px solid rgba(255,255,255,.4); border-radius: 6px; background: #141021; display: block; }
+#map-legend { font-size: 11px; color: #bdb2e8; margin-top: 6px; letter-spacing: 1px; }
+#map-right { width: 380px; font-size: 13px; line-height: 1.5; }
+#map-missions, #map-stats, #map-collect { background: rgba(10,5,30,.72); border: 1px solid #3d3552; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; }
+#map-missions h3, #map-stats h3, #map-collect h3 { margin: 0 0 6px; font-size: 12px; letter-spacing: 1px; color: #ffd23d; }
+.mrow { display: flex; justify-content: space-between; gap: 8px; }
+.mrow.done { color: #7dff9a; }
+.mrow.next { color: #fff; font-weight: 700; }
+.mrow.locked { color: #8a83a8; }
+.mrow .pay { color: #7dff9a; white-space: nowrap; }
 /* touch controls: only on coarse-pointer devices (phones/tablets) */
 #touch { display: none; }
 body.touch #touch { display: block; position: absolute; inset: 0; pointer-events: none; }
@@ -39,6 +87,9 @@ body.touch #hint { display: none; }
 body.touch #objective { max-width: 86vw; top: 102px; }
 body.touch #minimap { width: 120px; height: 120px; }
 body.touch #speedo { bottom: 240px; right: 14px; font-size: 32px; }
+body.touch #top-right { display: none; }
+body.touch #weapons { bottom: 200px; }
+body.touch #dialog { bottom: 260px; max-width: 86vw; }
 #joy { position: absolute; left: 18px; bottom: 70px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.35); pointer-events: auto; touch-action: none; }
 #joy-knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; border-radius: 50%; background: rgba(255,255,255,.35); transform: translate(-50%,-50%); }
 #touch-btns { position: absolute; right: 16px; bottom: 150px; display: flex; gap: 12px; pointer-events: auto; }

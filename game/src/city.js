@@ -1,5 +1,6 @@
 // Neon Bay city: 8x8 blocks over ~400x400 m, roads between blocks, harbour on the east.
 // Builds the Three.js scene and returns colliders + road data the gameplay uses.
+// opts.night renders the same city at night (darker sky, dimmer sun, brighter windows).
 import * as THREE from 'three';
 import { mulberry32 } from './util.js';
 
@@ -8,7 +9,31 @@ export const CITY = {
   waterX: 185, // east of this is harbour water
 };
 
-export function buildCity(scene, seed) {
+// Seven named districts, tiling the map (first match wins). Standing is the
+// crew's reputation in that district, shown in the HUD and on the MAP screen.
+export const DISTRICTS = [
+  { name: 'KUMALA STRAND', sub: 'Strand Boulevard', minX: 100, maxX: 210, minZ: -200, maxZ: 200, standing: 58, mood: 'NEUTRAL' },
+  { name: 'LANTERN MILE', sub: 'Lantern Row', minX: -50, maxX: 100, minZ: -200, maxZ: -50, standing: 74, mood: 'FRIENDLY' },
+  { name: 'BANYAN GREEN', sub: 'Banyan Park', minX: -200, maxX: -50, minZ: -200, maxZ: -50, standing: 61, mood: 'NEUTRAL' },
+  { name: 'OLD PASARU', sub: 'Night Market', minX: -200, maxX: -50, minZ: -50, maxZ: 100, standing: 66, mood: 'FRIENDLY' },
+  { name: 'MARINA ROW', sub: 'Marina Parade', minX: -50, maxX: 100, minZ: -50, maxZ: 100, standing: 52, mood: 'NEUTRAL' },
+  { name: 'VELA HEIGHTS', sub: 'Tranvia Ave', minX: -50, maxX: 100, minZ: 100, maxZ: 200, standing: 41, mood: 'COLD' },
+  { name: 'SUNSET BOULEVARD', sub: 'Sunset Blvd', minX: -200, maxX: -50, minZ: 100, maxZ: 200, standing: 58, mood: 'NEUTRAL' },
+];
+export function districtAt(x, z) {
+  for (const d of DISTRICTS) if (x >= d.minX && x < d.maxX && z >= d.minZ && z < d.maxZ) return d;
+  return DISTRICTS[4];
+}
+
+// 20 Golden Gecko collectible spots, on road intersections and landmarks.
+export const GECKO_SPOTS = [
+  [-55, 145], [145, -105], [145, 95], [95, -155], [-155, -155], [-30, -30], [95, -5],
+  [-5, 95], [95, 45], [-55, -55], [190, -40], [198, -150], [-155, 95], [45, 145],
+  [-155, 45], [95, 145], [-105, -105], [45, -155], [-5, -155], [145, -5],
+];
+
+export function buildCity(scene, seed, opts = {}) {
+  const night = !!opts.night;
   const rand = mulberry32(seed);
   const colliders = []; // {minX,maxX,minZ,maxZ}
   const roadLines = []; // x or z coords of road centrelines
@@ -18,21 +43,21 @@ export function buildCity(scene, seed) {
   for (let i = 0; i <= 8; i++) roadLines.push(-200 + i * 50 - 5);
 
   // --- sky: gradient dome + fog ---
-  scene.background = new THREE.Color(0x2a1548);
-  scene.fog = new THREE.Fog(0x3a1e5e, 120, 520);
+  scene.background = new THREE.Color(night ? 0x0b1026 : 0x2a1548);
+  scene.fog = new THREE.Fog(night ? 0x141a3a : 0x3a1e5e, 120, 520);
   const skyGeo = new THREE.SphereGeometry(600, 16, 12);
-  const skyMat = new THREE.MeshBasicMaterial({ color: 0xff7a3d, side: THREE.BackSide, fog: false });
+  const skyMat = new THREE.MeshBasicMaterial({ color: night ? 0x1a2a55 : 0xff7a3d, side: THREE.BackSide, fog: false });
   const sky = new THREE.Mesh(skyGeo, skyMat);
   scene.add(sky);
-  // sun disc low on the horizon (west)
-  const sun = new THREE.Mesh(new THREE.CircleGeometry(28, 24), new THREE.MeshBasicMaterial({ color: 0xffd23d, fog: false }));
+  // sun disc low on the horizon (west) — at night a pale moon in the same place
+  const sun = new THREE.Mesh(new THREE.CircleGeometry(night ? 18 : 28, 24), new THREE.MeshBasicMaterial({ color: night ? 0xe8ecff : 0xffd23d, fog: false }));
   sun.position.set(-420, 55, -120); sun.lookAt(0, 40, 0); scene.add(sun);
 
   // --- lights ---
-  scene.add(new THREE.AmbientLight(0x8a6bb8, 0.85));
-  const dir = new THREE.DirectionalLight(0xff9a5c, 1.4);
+  scene.add(new THREE.AmbientLight(night ? 0x4a5a9a : 0x8a6bb8, night ? 0.55 : 0.85));
+  const dir = new THREE.DirectionalLight(night ? 0x9ab4ff : 0xff9a5c, night ? 0.55 : 1.4);
   dir.position.set(-180, 140, 60); scene.add(dir);
-  const hemi = new THREE.HemisphereLight(0x7a5cff, 0x2a1a3a, 0.5); scene.add(hemi);
+  const hemi = new THREE.HemisphereLight(0x7a5cff, 0x2a1a3a, night ? 0.3 : 0.5); scene.add(hemi);
 
   // --- ground ---
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(520, 520), new THREE.MeshLambertMaterial({ color: 0x2e2a33 }));
@@ -72,7 +97,7 @@ export function buildCity(scene, seed) {
     c.fillStyle = '#241d33'; c.fillRect(0, 0, 64, 128);
     const stepX = [10, 8, 12, 10][v], stepY = [12, 10, 14, 12][v];
     const wW = [6, 5, 7, 4][v], wH = [8, 6, 9, 7][v];
-    const lit = [0.55, 0.35, 0.7, 0.45][v];
+    const lit = night ? [0.8, 0.6, 0.9, 0.7][v] : [0.55, 0.35, 0.7, 0.45][v];
     const palettes = [['#ffd23d', '#ff9a5c', '#7de3ff', '#ff7ad9'], ['#ffd23d', '#ff9a5c'],
       ['#7de3ff', '#ff7ad9', '#ffd23d'], ['#ff9a5c', '#ffd23d']];
     const pal = palettes[v];
@@ -86,7 +111,7 @@ export function buildCity(scene, seed) {
   const bldgCols = [0x3a3450, 0x4a2f4d, 0x2f3d5c, 0x503a2e, 0x37304a, 0x5c2f3d];
   const bldgMats = [];
   for (let i = 0; i < 12; i++) bldgMats.push(new THREE.MeshLambertMaterial({
-    color: bldgCols[i % bldgCols.length], emissive: 0xffffff, emissiveMap: winTexes[i % winTexes.length], emissiveIntensity: 0.55 }));
+    color: bldgCols[i % bldgCols.length], emissive: 0xffffff, emissiveMap: winTexes[i % winTexes.length], emissiveIntensity: night ? 0.9 : 0.55 }));
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
   const roofMat = new THREE.MeshLambertMaterial({ color: 0x1a1622 });
 
@@ -127,7 +152,7 @@ export function buildCity(scene, seed) {
   // --- landmarks: Neon Spire tower (plaza block 3,3, centre -30,-30) ---
   const spireBase = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color: 0x2f2a3d }));
   spireBase.scale.set(16, 8, 16); spireBase.position.set(-30, 4, -30); scene.add(spireBase);
-  const spireShaft = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color: 0x4a2f4d, emissive: 0xffffff, emissiveMap: winTexes[2], emissiveIntensity: 0.4 }));
+  const spireShaft = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color: 0x4a2f4d, emissive: 0xffffff, emissiveMap: winTexes[2], emissiveIntensity: night ? 0.7 : 0.4 }));
   spireShaft.scale.set(9, 34, 9); spireShaft.position.set(-30, 25, -30); scene.add(spireShaft);
   const spireCrown = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color: 0x2f2a3d }));
   spireCrown.scale.set(11, 4, 11); spireCrown.position.set(-30, 44, -30); scene.add(spireCrown);
@@ -187,7 +212,7 @@ export function buildCity(scene, seed) {
   const lampGeo = new THREE.SphereGeometry(0.3, 8, 6);
   const lampMat = new THREE.MeshBasicMaterial({ color: 0xffe9a8 });
   const glowGeo = new THREE.SphereGeometry(0.38, 8, 6);
-  const lampLightMat = new THREE.MeshBasicMaterial({ color: 0xffd23d, transparent: true, opacity: 0.15 });
+  const lampLightMat = new THREE.MeshBasicMaterial({ color: 0xffd23d, transparent: true, opacity: night ? 0.35 : 0.15 });
   const lampSpots = [];
   for (const c of roadLines) for (let d = -180; d <= 180; d += 50) {
     for (const [lx, lz] of [[c + 6, d], [c - 6, d + 25]]) {
@@ -252,7 +277,7 @@ export function buildCity(scene, seed) {
   }
 
   return {
-    colliders, roadLines, rectLoops, beacon,
+    colliders, roadLines, rectLoops, beacon, districts: DISTRICTS, geckoSpots: GECKO_SPOTS, night,
     // All key points sit on road intersections (road centrelines), never inside a block,
     // so the player is never pushed out of a building footprint on spawn or delivery.
     spawn: { x: -55, z: 145 },           // Mara's garage (south-west intersection)
@@ -262,5 +287,6 @@ export function buildCity(scene, seed) {
     pickup: { x: 145, z: -105 },
     chopShop: { x: 145, z: 95 },
     harbour: { x: 190, z: -40 },
+    market: { x: -105, z: 45 }, // Old Pasaru night market (road intersection)
   };
 }

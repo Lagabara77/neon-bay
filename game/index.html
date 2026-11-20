@@ -19,9 +19,22 @@
       <div id="money">$<span id="money-text">250</span></div>
       <div id="wanted"></div>
     </div>
-    <div id="objective" class="hidden"><span id="objective-title"></span><span id="objective-text"></span></div>
+    <div id="objective" class="hidden"><span id="objective-title"></span><span id="objective-text"></span><span id="objective-next"></span></div>
+    <div id="top-right">
+      <div id="dispatch"><div id="dispatch-title">BAY PD RESPONSE · 0 UNITS</div><div id="dispatch-rows"></div></div>
+      <div id="clock-line"><span id="clock-text">DAY 4 · 18:16</span><span id="district-text">KUMALA STRAND · NEUTRAL 58</span></div>
+      <div id="radio-line"><span id="radio-station">NEON FM 98.6</span><span id="radio-song">Midnight Mirage — Vela Roja</span></div>
+    </div>
+    <div id="vehicle-card" class="hidden"><span id="vehicle-name">VIREO GT · 84%</span><span id="rank-line">SHOT CALLER · 290/550 RESPECT</span><div id="respect-wrap"><div id="respect-bar"></div></div></div>
     <div id="speedo" class="hidden"><span id="speed-text">0</span><small>mph</small></div>
     <canvas id="minimap" width="180" height="180"></canvas>
+    <div id="weapons">
+      <div class="wslot sel" id="wslot-0"><b>1</b> FISTS</div>
+      <div class="wslot" id="wslot-1"><b>2</b> P9 <span id="ammo-text">12</span></div>
+      <div class="wslot locked" id="wslot-2"><b>3</b> SMG · $1,900</div>
+      <div class="wslot locked" id="wslot-3"><b>4</b> AR-9 · $9,000</div>
+    </div>
+    <div id="dialog" class="hidden"><b id="dialog-who">MARA VOSS · CREW BOSS</b><span id="dialog-text"></span></div>
     <div id="hint">WASD move &middot; Shift run &middot; E enter/exit car &middot; F punch &middot; Q shoot &middot; R reload &middot; M mute &middot; Esc pause</div>
     <div id="banner" class="hidden"></div>
     <div id="toast" class="hidden"></div>
@@ -41,11 +54,27 @@
       <button id="btn-new">Start New Game</button>
       <button id="btn-continue">Continue</button>
     </div>
+    <div id="save-slots">
+      <div class="slot" id="slot-1"><b>SLOT 1</b><span id="slot-1-text">No save yet</span></div>
+      <div class="slot" id="slot-2"><b>SLOT 2</b><span>EMPTY</span></div>
+      <div class="slot" id="slot-3"><b>SLOT 3</b><span>EMPTY</span></div>
+    </div>
     <p class="controls">WASD move &middot; mouse drag orbit &middot; Shift run &middot; E car &middot; F punch &middot; Q shoot &middot; R reload &middot; M mute &middot; Esc pause</p>
     <p class="foot">Original game &middot; no affiliation with any real city or franchise</p>
   </div>
   <div id="pause" class="screen hidden">
-    <h2>PAUSED</h2>
+    <h2>MAP &amp; STATS</h2>
+    <div id="map-grid">
+      <div id="map-left">
+        <canvas id="map-canvas" width="520" height="300"></canvas>
+        <div id="map-legend">7 DISTRICTS · GOLD = MISSION TARGET · RED = BAY PD · YELLOW = AIR ONE</div>
+      </div>
+      <div id="map-right">
+        <div id="map-missions"></div>
+        <div id="map-stats"></div>
+        <div id="map-collect"></div>
+      </div>
+    </div>
     <div class="buttons"><button id="btn-resume">Resume</button><button id="btn-quit">Save &amp; Quit to Title</button></div>
   </div>
   <div id="busted" class="screen hidden">

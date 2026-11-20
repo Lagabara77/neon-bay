@@ -1,4 +1,5 @@
-// Procedural WebAudio only — no audio files. Engine hum, siren, blips, thuds.
+// Procedural WebAudio only — no audio files. Engine hum, siren, blips, thuds,
+// a radio-station jingle, a collectible chime and a rank-up fanfare.
 export function createAudio() {
   let ctx = null, muted = false, engineOsc = null, engineGain = null, sirenOsc = null, sirenGain = null, sirenTimer = null;
   function ensure() {
@@ -38,6 +39,12 @@ export function createAudio() {
     shot() { blip(220, 0.08, 'square', 0.22); },
     cash() { blip(660, 0.12); setTimeout(() => blip(990, 0.2), 80); },
     busted() { blip(440, 0.3, 'sawtooth', 0.15); setTimeout(() => blip(330, 0.5, 'sawtooth', 0.15), 200); },
+    // Golden Gecko collectible: bright two-note chime.
+    gecko() { blip(1568, 0.1, 'sine', 0.18); setTimeout(() => blip(2093, 0.18, 'sine', 0.18), 70); },
+    // Rank-up fanfare: three rising notes.
+    rankUp() { [523, 659, 784].forEach((f, i) => setTimeout(() => blip(f, 0.16, 'triangle', 0.2), i * 110)); },
+    // Radio station ident jingle (NEON FM 98.6).
+    radioJingle() { [440, 554, 659].forEach((f, i) => setTimeout(() => blip(f, 0.12, 'sine', 0.1), i * 90)); },
     toggleMute() { muted = !muted; if (ctx) { if (engineGain) engineGain.gain.value = 0; if (sirenGain) sirenGain.gain.value = 0; } return muted; },
     isMuted() { return muted; },
     // play-test handle: current WebAudio state (no gameplay effect)
