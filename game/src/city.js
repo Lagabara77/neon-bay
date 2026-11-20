@@ -3,6 +3,9 @@
 // opts.night renders the same city at night (darker sky, dimmer sun, brighter windows).
 // opts.day renders it in bright daylight (blue sky, strong sun) — used by the daytime
 // shootout shot; the default is a brightened dusk so streets read clearly.
+// opts.title renders a brighter golden-hour dusk — same orange-violet identity, only
+// lighter (brighter sky, ambient ~1.25, sun ~2.0, windows a touch brighter) — used
+// ONLY by the title-screen staging, never by the gameplay shots.
 import * as THREE from 'three';
 import { mulberry32 } from './util.js';
 
@@ -34,9 +37,20 @@ export const GECKO_SPOTS = [
   [-155, 45], [95, 145], [-105, -105], [45, -155], [-5, -155], [145, -5],
 ];
 
+// Points of interest for the MAP screen: one per district area, fixed positions
+// (race on the beachfront road, stash by the harbour, safehouse by the spawn,
+// clinic by the hospital). Symbol + colour match the map legend in index.html.
+export const POIS = [
+  { key: 'race', label: 'RACE', sym: 'R', color: '#ff2d78', x: 175, z: 45 },
+  { key: 'stash', label: 'STASH', sym: '$', color: '#ffd23d', x: 180, z: -40 },
+  { key: 'safehouse', label: 'SAFEHOUSE', sym: 'H', color: '#7dff9a', x: -55, z: 120 },
+  { key: 'clinic', label: 'CLINIC', sym: '+', color: '#ff5c5c', x: -155, z: -105 },
+];
+
 export function buildCity(scene, seed, opts = {}) {
   const night = !!opts.night;
   const day = !!opts.day;
+  const title = !!opts.title; // golden-hour title preset: brighter dusk, same identity
   const rand = mulberry32(seed);
   const colliders = []; // {minX,maxX,minZ,maxZ}
   const roadLines = []; // x or z coords of road centrelines
@@ -46,10 +60,10 @@ export function buildCity(scene, seed, opts = {}) {
   for (let i = 0; i <= 8; i++) roadLines.push(-200 + i * 50 - 5);
 
   // --- sky: gradient dome + fog ---
-  scene.background = new THREE.Color(day ? 0x8fd0f0 : night ? 0x0b1026 : 0x2a1548);
-  scene.fog = new THREE.Fog(day ? 0xa8d8ea : night ? 0x141a3a : 0x4a2a6e, 120, 520);
+  scene.background = new THREE.Color(day ? 0x8fd0f0 : night ? 0x0b1026 : title ? 0x4a2560 : 0x2a1548);
+  scene.fog = new THREE.Fog(day ? 0xa8d8ea : night ? 0x141a3a : title ? 0x6e3a8a : 0x4a2a6e, 120, 520);
   const skyGeo = new THREE.SphereGeometry(600, 16, 12);
-  const skyMat = new THREE.MeshBasicMaterial({ color: day ? 0x6ec1f2 : night ? 0x1a2a55 : 0xff7a3d, side: THREE.BackSide, fog: false });
+  const skyMat = new THREE.MeshBasicMaterial({ color: day ? 0x6ec1f2 : night ? 0x1a2a55 : title ? 0xff9a4d : 0xff7a3d, side: THREE.BackSide, fog: false });
   const sky = new THREE.Mesh(skyGeo, skyMat);
   scene.add(sky);
   // sun disc low on the horizon (west) — at night a pale moon in the same place,
@@ -60,13 +74,15 @@ export function buildCity(scene, seed, opts = {}) {
   // --- lights ---
   // Dusk is deliberately brighter than round 5 (ambient 0.85 -> 1.0, sun 1.4 -> 1.7,
   // hemi 0.5 -> 0.65) so asphalt and facades read instead of going near-black.
-  scene.add(new THREE.AmbientLight(day ? 0xffffff : night ? 0x4a5a9a : 0xa08ad0, day ? 1.1 : night ? 0.55 : 1.0));
-  const dir = new THREE.DirectionalLight(day ? 0xfff2cc : night ? 0x9ab4ff : 0xff9a5c, day ? 2.2 : night ? 0.55 : 1.7);
+  // The title preset goes one step further (ambient 1.25, sun 2.0, hemi 0.8) for a
+  // golden-hour panorama; the gameplay dusk preset is untouched.
+  scene.add(new THREE.AmbientLight(day ? 0xffffff : night ? 0x4a5a9a : 0xa08ad0, day ? 1.1 : night ? 0.55 : title ? 1.25 : 1.0));
+  const dir = new THREE.DirectionalLight(day ? 0xfff2cc : night ? 0x9ab4ff : 0xff9a5c, day ? 2.2 : night ? 0.55 : title ? 2.0 : 1.7);
   dir.position.set(day ? 120 : -180, day ? 220 : 140, day ? 80 : 60); scene.add(dir);
-  const hemi = new THREE.HemisphereLight(day ? 0xbfd9ff : 0x7a5cff, day ? 0x8a7a5a : 0x2a1a3a, day ? 0.9 : night ? 0.3 : 0.65); scene.add(hemi);
+  const hemi = new THREE.HemisphereLight(day ? 0xbfd9ff : 0x7a5cff, day ? 0x8a7a5a : 0x2a1a3a, day ? 0.9 : night ? 0.3 : title ? 0.8 : 0.65); scene.add(hemi);
 
   // --- ground ---
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(520, 520), new THREE.MeshLambertMaterial({ color: day ? 0x6a6258 : 0x3a3540 }));
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(520, 520), new THREE.MeshLambertMaterial({ color: day ? 0x6a6258 : title ? 0x4a4450 : 0x3a3540 }));
   ground.rotation.x = -Math.PI / 2; ground.position.y = 0; scene.add(ground);
   // sidewalks: lighter slabs per block
   const walkMat = new THREE.MeshLambertMaterial({ color: day ? 0x8a8494 : 0x5a5468 });
@@ -118,7 +134,7 @@ export function buildCity(scene, seed, opts = {}) {
   const bldgCols = [0x3a3450, 0x4a2f4d, 0x2f3d5c, 0x503a2e, 0x37304a, 0x5c2f3d];
   const bldgMats = [];
   for (let i = 0; i < 12; i++) bldgMats.push(new THREE.MeshLambertMaterial({
-    color: bldgCols[i % bldgCols.length], emissive: 0xffffff, emissiveMap: winTexes[i % winTexes.length], emissiveIntensity: day ? 0.25 : night ? 0.9 : 0.55 }));
+    color: bldgCols[i % bldgCols.length], emissive: 0xffffff, emissiveMap: winTexes[i % winTexes.length], emissiveIntensity: day ? 0.25 : night ? 0.9 : title ? 0.7 : 0.55 }));
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
   const roofMat = new THREE.MeshLambertMaterial({ color: 0x1a1622 });
 
@@ -159,7 +175,7 @@ export function buildCity(scene, seed, opts = {}) {
   // --- landmarks: Neon Spire tower (plaza block 3,3, centre -30,-30) ---
   const spireBase = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color: 0x2f2a3d }));
   spireBase.scale.set(16, 8, 16); spireBase.position.set(-30, 4, -30); scene.add(spireBase);
-  const spireShaft = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color: 0x4a2f4d, emissive: 0xffffff, emissiveMap: winTexes[2], emissiveIntensity: day ? 0.25 : night ? 0.7 : 0.4 }));
+  const spireShaft = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color: 0x4a2f4d, emissive: 0xffffff, emissiveMap: winTexes[2], emissiveIntensity: day ? 0.25 : night ? 0.7 : title ? 0.55 : 0.4 }));
   spireShaft.scale.set(9, 34, 9); spireShaft.position.set(-30, 25, -30); scene.add(spireShaft);
   const spireCrown = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color: 0x2f2a3d }));
   spireCrown.scale.set(11, 4, 11); spireCrown.position.set(-30, 44, -30); scene.add(spireCrown);
@@ -284,7 +300,7 @@ export function buildCity(scene, seed, opts = {}) {
   }
 
   return {
-    colliders, roadLines, rectLoops, beacon, districts: DISTRICTS, geckoSpots: GECKO_SPOTS, night, day,
+    colliders, roadLines, rectLoops, beacon, districts: DISTRICTS, geckoSpots: GECKO_SPOTS, pois: POIS, night, day, title,
     // All key points sit on road intersections (road centrelines), never inside a block,
     // so the player is never pushed out of a building footprint on spawn or delivery.
     spawn: { x: -55, z: 145 },           // Mara's garage (south-west intersection)

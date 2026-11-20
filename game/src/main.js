@@ -3,6 +3,9 @@
 // stages a money shot (legacy ?shot=start|drive|wanted|mission still work).
 // Round 6: brighter dusk + a daylight preset for the shootout shot, a giant district
 // title card, named dispatch for foot units, and a SUSPECT line under the dispatch panel.
+// Round 7: MAP & STATS polish (completion ring, mission ratings, POI icons + legend,
+// brighter roads, coastline, readable district labels, WebGL canvas hidden behind the
+// pause overlay) + a brighter golden-hour title preset used only by the title shot.
 import * as THREE from 'three';
 import { buildCity, districtAt } from './city.js';
 import { createAudio } from './audio.js';
@@ -25,7 +28,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 1200);
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
-const city = buildCity(scene, seed, { day: SHOT === 'shootout' });
+const city = buildCity(scene, seed, { day: SHOT === 'shootout', title: SHOT === 'title' });
 const rand = mulberry32(seed * 7919 + 13);
 const audio = createAudio();
 
@@ -558,12 +561,19 @@ function startGame(fresh) {
   if (G.missionIdx < MISSIONS.length) startMission(G.missionIdx); else updateObjective();
   updateObjective();
 }
-function pauseGame() { G.screen = 'pause'; fillMapScreen(); show($('pause'), true); saveGame(); }
-function resumeGame() { G.screen = 'play'; show($('pause'), false); }
+function pauseGame() {
+  G.screen = 'pause'; fillMapScreen();
+  // Hide the WebGL canvas behind the pause overlay: the 3D rooftops showing
+  // through the translucent screen were the orange blob under the map panel.
+  // The title screen keeps its 3D panorama — this only hides it while paused.
+  canvas.style.display = 'none';
+  show($('pause'), true); saveGame();
+}
+function resumeGame() { G.screen = 'play'; canvas.style.display = ''; show($('pause'), false); }
 $('btn-new').onclick = () => startGame(true);
 $('btn-continue').onclick = () => startGame(false);
 $('btn-resume').onclick = resumeGame;
-$('btn-quit').onclick = () => { saveGame(); G.screen = 'title'; show($('pause'), false); show($('hud'), false); show($('title'), true); refreshContinue(); };
+$('btn-quit').onclick = () => { saveGame(); G.screen = 'title'; canvas.style.display = ''; show($('pause'), false); show($('hud'), false); show($('title'), true); refreshContinue(); };
 $('btn-respawn').onclick = () => { show($('busted'), false); show($('hud'), true); G.screen = 'play'; updateObjective(); };
 $('btn-md').onclick = () => {
   show($('mission-done'), false); G.screen = 'play';
@@ -583,12 +593,23 @@ function fillSlots() {
 refreshContinue();
 
 // ---------- MAP & STATS screen ----------
+// Mission ratings are staged-save display data (same fiction as the career stats):
+// shown ONLY for missions already DONE in the staged save (missions 1-3).
+const MISSION_RATINGS = ['G', 'S', 'B'];
 function fillMapScreen() {
   const done = Math.min(G.missionIdx, 7);
+  // Completion ring, computed from real state (missions done / 7):
+  // the staged save has 3/7 done, so the ring reads 43% COMPLETE.
+  const pct = Math.round(done / 7 * 100);
+  const ring = $('progress-ring');
+  ring.style.background = `conic-gradient(#ffd23d ${pct * 3.6}deg, rgba(255,255,255,.15) 0deg)`;
+  $('progress-pct').textContent = pct + '%';
+  $('progress-caption').innerHTML = `<b>${pct}% COMPLETE</b> · ${done}/7 MISSIONS`;
   $('map-missions').innerHTML = '<h3>STORY MISSIONS · 7 JOBS · 5 CHAPTERS</h3>' + MISSIONS.map((m, i) => {
     const cls = i < done ? 'done' : i === done ? 'next' : 'locked';
     const tag = i < done ? 'DONE ✓' : i === done ? 'NEXT' : 'LOCKED';
-    return `<div class="mrow ${cls}"><span>CH.${m.chapter} · ${m.title.toUpperCase()}</span><span class="pay">${fmtMoney(m.reward)} · ${tag}</span></div>`;
+    const rating = i < done && MISSION_RATINGS[i] ? `<span class="rating">${MISSION_RATINGS[i]}</span>` : '';
+    return `<div class="mrow ${cls}"><span>CH.${m.chapter} · ${m.title.toUpperCase()}${rating}</span><span class="pay">${fmtMoney(m.reward)} · ${tag}</span></div>`;
   }).join('') + `<div class="mrow"><span>TOTAL STORY PAYOUT</span><span class="pay">${fmtMoney(MISSIONS.reduce((a, m) => a + m.reward, 0))}</span></div>`;
   const friendly = city.districts.filter(d => d.standing >= 65).length;
   const { cur, next } = rankFor(G.respect);
@@ -619,16 +640,23 @@ function drawPauseMap() {
     c.fillRect(toX(d.minX), toZ(d.minZ), toX(d.maxX) - toX(d.minX), toZ(d.maxZ) - toZ(d.minZ));
   });
   c.fillStyle = '#0e4a6e'; c.fillRect(toX(185), 0, W - toX(185), H); // harbour water over the east strip
-  city.districts.forEach((d) => { // labels last, so the water never clips them
-    c.fillStyle = '#fff'; c.font = 'bold 11px Arial'; c.textAlign = 'center';
-    c.fillText(d.name, (toX(d.minX) + toX(d.maxX)) / 2, (toZ(d.minZ) + toZ(d.maxZ)) / 2 - 4);
-    c.fillStyle = '#ffd23d'; c.font = '10px Arial';
-    c.fillText(`${d.mood} ${d.standing}`, (toX(d.minX) + toX(d.maxX)) / 2, (toZ(d.minZ) + toZ(d.maxZ)) / 2 + 10);
-  });
-  c.strokeStyle = '#6a6285'; c.lineWidth = 2;
+  // beach strip + coastline where the land meets the harbour water
+  c.fillStyle = '#c9a86a'; c.fillRect(toX(175), 0, toX(185) - toX(175), H);
+  c.strokeStyle = '#7de3ff'; c.lineWidth = 3;
+  c.beginPath(); c.moveTo(toX(185), 0); c.lineTo(toX(185), H); c.stroke();
+  // roads: thicker + brighter than round 6 (#6a6285, width 2 — too faint to read)
+  c.strokeStyle = '#a89ec4'; c.lineWidth = 3;
   for (const r of city.roadLines) {
     c.beginPath(); c.moveTo(toX(-200), toZ(r)); c.lineTo(toX(200), toZ(r)); c.stroke();
     c.beginPath(); c.moveTo(toX(r), toZ(-200)); c.lineTo(toX(r), toZ(200)); c.stroke();
+  }
+  // POI icons: one per district area, symbol + colour match the legend below the map
+  for (const p of city.pois) {
+    c.fillStyle = p.color; c.beginPath(); c.arc(toX(p.x), toZ(p.z), 8, 0, 7); c.fill();
+    c.strokeStyle = 'rgba(0,0,0,0.6)'; c.lineWidth = 2; c.stroke();
+    c.fillStyle = (p.key === 'stash' || p.key === 'safehouse') ? '#141021' : '#fff';
+    c.font = 'bold 10px Arial'; c.textAlign = 'center';
+    c.fillText(p.sym, toX(p.x), toZ(p.z) + 3.5);
   }
   // geckos (gold dots), mission target (gold ring), police (red), player (green)
   for (const gk of geckos) if (!gk.taken) { c.fillStyle = '#ffd23d'; c.beginPath(); c.arc(toX(gk.x), toZ(gk.z), 3, 0, 7); c.fill(); }
@@ -637,6 +665,24 @@ function drawPauseMap() {
   c.fillStyle = '#ff2222';
   for (const pc of policeCars()) { c.beginPath(); c.arc(toX(pc.group.position.x), toZ(pc.group.position.z), 4, 0, 7); c.fill(); }
   c.fillStyle = '#7dff9a'; c.beginPath(); c.arc(toX(player.pos.x), toZ(player.pos.z), 5, 0, 7); c.fill();
+  // district labels last, on a dark pill so name + mood/standing always read —
+  // long names (KUMALA STRAND, SUNSET BOULEVARD) get a smaller font instead of
+  // colliding with the grid or the player marker.
+  city.districts.forEach((d) => {
+    const cx = (toX(d.minX) + toX(d.maxX)) / 2, cy = (toZ(d.minZ) + toZ(d.maxZ)) / 2;
+    const small = d.name.length > 12;
+    c.font = `bold ${small ? 9 : 11}px Arial`;
+    const nameW = c.measureText(d.name).width;
+    c.font = '10px Arial';
+    const moodW = c.measureText(`${d.mood} ${d.standing}`).width;
+    const w = Math.max(nameW, moodW) + 12;
+    c.fillStyle = 'rgba(0,0,0,0.55)';
+    c.fillRect(cx - w / 2, cy - 13, w, 26);
+    c.fillStyle = '#fff'; c.font = `bold ${small ? 9 : 11}px Arial`; c.textAlign = 'center';
+    c.fillText(d.name, cx, cy - 3);
+    c.fillStyle = '#ffd23d'; c.font = '10px Arial';
+    c.fillText(`${d.mood} ${d.standing}`, cx, cy + 11);
+  });
 }
 
 // ---------- per-frame updates ----------
