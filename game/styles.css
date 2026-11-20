@@ -15,14 +15,20 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1030; fon
 #objective-title { display: block; font-weight: 800; color: #ffb3d1; letter-spacing: 1px; font-size: 13px; text-transform: uppercase; }
 #objective-text { font-size: 15px; }
 #objective-next { display: block; font-size: 12px; color: #ffd23d; margin-top: 2px; }
+/* giant district title card: flashes centre-top whenever the player enters a
+   new district, so the place reads in one second (round 6) */
+#district-card { position: absolute; top: 104px; left: 50%; transform: translateX(-50%); text-align: center; text-shadow: 0 2px 10px #000, 0 0 22px rgba(255,45,120,.65); }
+#district-card-name { display: block; font-size: 46px; font-weight: 900; letter-spacing: 9px; color: #fff; white-space: nowrap; }
+#district-card-sub { display: block; font-size: 19px; font-weight: 800; letter-spacing: 14px; color: #ffd23d; margin-top: 2px; }
 /* top-right: dispatch + clock/district + radio */
-#top-right { position: absolute; top: 14px; right: 14px; width: 248px; text-align: left; }
+#top-right { position: absolute; top: 14px; right: 14px; width: 282px; text-align: left; }
 #dispatch { background: rgba(10,5,30,.72); border: 1px solid #3d3552; border-left: 4px solid #ff2222; border-radius: 4px; padding: 6px 10px; font-size: 12px; line-height: 1.55; }
 #dispatch-title { font-weight: 800; letter-spacing: 1px; color: #ff8a8a; font-size: 11px; }
 #dispatch-rows .drow { display: flex; justify-content: space-between; gap: 6px; white-space: nowrap; }
 #dispatch-rows .drow b { color: #fff; }
 #dispatch-rows .drow .role { color: #ffd23d; }
 #dispatch-rows .drow .dist { color: #9fd8ff; }
+#suspect-line { margin-top: 6px; background: rgba(10,5,30,.72); border: 1px solid #3d3552; border-left: 4px solid #ffd23d; border-radius: 4px; padding: 5px 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: #ffe9a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #clock-line, #radio-line { margin-top: 6px; background: rgba(10,5,30,.72); border: 1px solid #3d3552; border-radius: 4px; padding: 5px 10px; font-size: 12px; display: flex; justify-content: space-between; gap: 8px; }
 #clock-text { font-weight: 800; color: #fff; }
 #district-text { color: #7dff9a; font-weight: 700; }
@@ -85,6 +91,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1030; fon
 body.touch #touch { display: block; position: absolute; inset: 0; pointer-events: none; }
 body.touch #hint { display: none; }
 body.touch #objective { max-width: 86vw; top: 102px; }
+body.touch #district-card { top: 190px; }
+body.touch #district-card-name { font-size: 30px; letter-spacing: 5px; }
 body.touch #minimap { width: 120px; height: 120px; }
 body.touch #speedo { bottom: 240px; right: 14px; font-size: 32px; }
 body.touch #top-right { display: none; }

@@ -1,6 +1,8 @@
 // Neon Bay — open-world crime game. Original fiction: Jax Marlowe, wheelman for Mara Voss.
 // Three.js low-poly dusk city. Keyboard + mouse. ?shot=chase|shootout|map|title&seed=N
 // stages a money shot (legacy ?shot=start|drive|wanted|mission still work).
+// Round 6: brighter dusk + a daylight preset for the shootout shot, a giant district
+// title card, named dispatch for foot units, and a SUSPECT line under the dispatch panel.
 import * as THREE from 'three';
 import { buildCity, districtAt } from './city.js';
 import { createAudio } from './audio.js';
@@ -23,7 +25,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 1200);
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
-const city = buildCity(scene, seed, { night: SHOT === 'shootout' });
+const city = buildCity(scene, seed, { day: SHOT === 'shootout' });
 const rand = mulberry32(seed * 7919 + 13);
 const audio = createAudio();
 
@@ -68,10 +70,12 @@ function rankFor(r) { let cur = RANKS[0], next = null; for (let i = 0; i < RANKS
 const player = { pos: new THREE.Vector3(city.spawn.x, 0, city.spawn.z), heading: 0, mesh: null, speed: 0 };
 const cars = [];   // {group, heading, speed, ai, loop, wp, color, isPolice, isTarget, lights:[m1,m2], name, condition, unit}
 const peds = [];   // {group, heading, speed, state, tx, tz, down, downT, hp}
-const cops = [];   // foot police {group, heading, speed, hp, hitCd}
+const cops = [];   // foot police {group, heading, speed, hp, hitCd, unit}
 const geckos = []; // {mesh, x, z, taken}
 let policeSeq = 0;
 const POLICE_UNITS = ['TARPON-38', 'TARPON-11', 'GULL-12', 'OSPREY-1', 'PELICAN-11', 'BARRACUDA-18', 'HERON-2', 'MAKO-6'];
+let copSeq = 0;
+const COP_UNITS = ['TARPON-21', 'TARPON-27', 'GULL-09', 'OSPREY-7', 'PELICAN-14', 'HERON-19'];
 const CAR_NAMES = { 0xc0392b: 'VIREO GT', 0x2980b9: 'CALYX SPRINT', 0xf1c40f: 'RUKAN PELO GT', 0x7f8c8d: 'SQUALL GT', 0x8e44ad: 'VELOZ COMET RS', 0x27ae60: 'TARPON CRUISER', 0xe67e22: 'MALECON GT', 0xecf0f1: 'LANTERNA S', 0x2c3e50: 'NOCTURNE GT' };
 
 // ---------- meshes ----------
@@ -138,7 +142,7 @@ function spawnCop(x, z, guard = false) {
     cone.position.y = 2.5; cone.rotation.x = Math.PI; g.add(cone);
   }
   g.position.set(x, 0, z); scene.add(g);
-  const c = { group: g, heading: 0, speed: 0, hp: 3, hitCd: 0, down: false, downT: 0, guard };
+  const c = { group: g, heading: 0, speed: 0, hp: 3, hitCd: 0, down: false, downT: 0, guard, unit: COP_UNITS[copSeq++ % COP_UNITS.length] };
   cops.push(c); return c;
 }
 
@@ -163,7 +167,11 @@ function updateHeli(dt) {
   const on = G.wanted >= 4 && (G.screen === 'play' || !!SHOT);
   heli.group.visible = on;
   if (!on) return;
-  heli.group.position.set(player.pos.x, 11, player.pos.z - 22); // ahead, above the open road: visible in the chase camera
+  // Round 6: low (y 9) and ahead of the player's heading, so the whole airframe
+  // sits in the chase camera instead of only the spotlight cone.
+  const hx = G.inCar && G.car ? Math.sin(G.car.heading) : Math.sin(player.heading);
+  const hz = G.inCar && G.car ? Math.cos(G.car.heading) : Math.cos(player.heading);
+  heli.group.position.set(player.pos.x + hx * 20, 9, player.pos.z + hz * 20);
   heli.rotor.rotation.y += dt * 14;
 }
 
@@ -905,6 +913,16 @@ function drawMinimap() {
   mm.fillStyle = '#fff'; mm.font = 'bold 10px Arial'; mm.textAlign = 'center';
   mm.fillText(d.name, S / 2, 14);
 }
+// Giant district title card: shown whenever the player enters a new district.
+let lastDistrict = '';
+function showDistrictCard(d) {
+  $('district-card-name').textContent = d.name;
+  $('district-card-sub').textContent = 'NEON BAY';
+  show($('district-card'), true);
+  clearTimeout(showDistrictCard._t);
+  // staged shots keep it up longer so the screenshot catches it mid-display
+  showDistrictCard._t = setTimeout(() => show($('district-card'), false), SHOT ? 8000 : 3500);
+}
 let hudT = 0;
 function updateHUD(dt) {
   hudT += dt; if (hudT < 0.12) return; hudT = 0;
@@ -925,6 +943,7 @@ function updateHUD(dt) {
   $('clock-text').textContent = `DAY ${G.day} · ${fmtClock(G.minutes)}`;
   const d = districtAt(player.pos.x, player.pos.z);
   $('district-text').textContent = `${d.name} · ${d.mood} ${d.standing}`;
+  if (d.name !== lastDistrict) { lastDistrict = d.name; showDistrictCard(d); }
   // weapons: P9 ammo + selected slot
   $('ammo-text').textContent = G.ammo;
   $('wslot-0').classList.toggle('sel', G.ammo <= 0);
@@ -935,7 +954,7 @@ function updateHUD(dt) {
   const { cur, next } = rankFor(G.respect);
   $('rank-line').textContent = `${cur.name} · ${G.respect}${next ? '/' + next.at : ''} RESPECT`;
   $('respect-bar').style.width = (next ? clamp(G.respect / next.at * 100, 0, 100) : 100) + '%';
-  // dispatch panel: named units + role + distance
+  // dispatch panel: named units + role + distance (foot units now named too, no more "GUARD")
   const rows = [];
   for (const pc of policeCars()) {
     const dist = dist2d(pc.group.position.x, pc.group.position.z, player.pos.x, player.pos.z);
@@ -943,7 +962,7 @@ function updateHUD(dt) {
     rows.push({ name: pc.unit || 'TARPON', role, dist });
   }
   if (heli.group.visible) rows.push({ name: 'AIR ONE', role: 'SPOTLIGHT', dist: dist2d(heli.group.position.x, heli.group.position.z, player.pos.x, player.pos.z) });
-  for (const c of cops) if (!c.down) rows.push({ name: c.guard ? 'GUARD' : 'FOOT UNIT', role: 'ON FOOT', dist: dist2d(c.group.position.x, c.group.position.z, player.pos.x, player.pos.z) });
+  for (const c of cops) if (!c.down) rows.push({ name: c.unit || 'FOOT UNIT', role: c.guard ? 'GUARD' : 'ON FOOT', dist: dist2d(c.group.position.x, c.group.position.z, player.pos.x, player.pos.z) });
   rows.sort((a, b) => a.dist - b.dist);
   const shown = rows.slice(0, 6);
   $('dispatch-title').textContent = `BAY PD RESPONSE · ${rows.length} UNIT${rows.length === 1 ? '' : 'S'}${G.wanted >= 4 ? ' · AIR UNIT DEPLOYED' : ''}`;
@@ -951,6 +970,7 @@ function updateHUD(dt) {
     ? shown.map(r => `<div class="drow"><b>${r.name}</b><span class="role">${r.role}</span><span class="dist">${fmtDist(r.dist)}</span></div>`).join('') +
       (rows.length > 6 ? `<div class="drow"><span>+${rows.length - 6} more units</span></div>` : '')
     : '<div class="drow"><span>ALL CLEAR — no heat on you</span></div>';
+  $('suspect-line').textContent = `SUSPECT: ${driving ? G.car.name : 'JAX MARLOWE'} · ${d.name}`;
 }
 
 // ---------- shot staging ----------
@@ -1001,40 +1021,59 @@ function stageShot(name) {
   }
   startMission(0);
   if (name === 'chase') {
-    // Shot 1: late-game chase, Mission 6 Banco Lucero, wanted 4 + helicopter, dusk.
+    // Shot 1 (round 6): late-game chase, Mission 6 Banco Lucero, wanted 4 + helicopter,
+    // brightened dusk, on the beachfront road east through Kumala Strand — the camera
+    // looks east down the Strand toward the harbour water, pier and lighthouse, with
+    // palms and traffic ahead of the car and AIR ONE whole in the frame.
     G.money = 19430; G.respect = 290; G.day = 9; G.minutes = 18 * 60 + 40;
     Object.assign(STATS, { carsStolen: 41, copsEscaped: 12, kmDriven: 48.2, takenOut: 23, geckos: 12, missionsDone: 5 });
     startMission(5); G.missionStage = 1; G.hasPackage = true; G.missionTimer = 120; updateObjective();
-    const car = spawnCar(45, -5, Math.PI, 0xc0392b, { name: 'VIREO GT', condition: 84 });
-    player.pos.set(45, 0, -5); enterCar(car); G.wanted = 4; car.speed = 14;
+    const car = spawnCar(165, 45, Math.PI / 2, 0xc0392b, { name: 'VIREO GT', condition: 84 });
+    player.pos.set(165, 0, 45); enterCar(car); G.wanted = 4; car.speed = 14;
     for (let i = 0; i < 4; i++) {
       const pc = spawnPoliceCar();
-      pc.group.position.set([33, 57, 30, 60][i], 0, [-18, -16, -2, -4][i]); pc.speed = 16;
+      pc.group.position.set([145, 155, 178, 150][i], 0, [45, 52, 40, 38][i]); pc.speed = 16;
     }
-    G.camYaw = Math.PI;
-    clusterNear(45, -5);
+    G.camYaw = Math.PI / 2;
+    clusterNear(165, 45);
   } else if (name === 'shootout') {
-    // Shot 2: night shootout in Old Pasaru market — guards with red markers,
-    // fleeing peds, traffic, tracer fire. Mission 4, stage 2/2.
-    G.money = 6420; G.respect = 140; G.day = 4; G.minutes = 22 * 60 + 10;
-    startMission(3); G.missionStage = 1; G.hasPackage = true; G.missionTimer = 120; updateObjective();
-    player.pos.set(-105, 0, 45);
-    player.heading = Math.atan2(-88 - player.pos.x, 30 - player.pos.z);
+    // Shot 2 (round 6): a real daytime shootout — Mission 7 The Lamplighter on a
+    // bright city street in Marina Row: 6 guards with red markers, one already down,
+    // a burning van, fleeing pedestrians, tracer fire. The objective is a shoot
+    // order ("Clear out the guards"), not a delivery.
+    G.money = 6420; G.respect = 140; G.day = 4; G.minutes = 13 * 60 + 20;
+    startMission(6); updateObjective();
+    $('objective-title').textContent = 'CH.5 STORM SURGE · MISSION 7/7 — THE LAMPLIGHTER · $50,000';
+    $('objective-text').textContent = 'Clear out the guards (6 left) — the Combine\'s crew holds this street.';
+    $('objective-next').textContent = 'NEXT Deliver the files to the harbor pier';
+    player.pos.set(20, 0, 95);
+    player.heading = Math.atan2(55 - player.pos.x, 95 - player.pos.z); // face east down the street
     player.mesh.position.copy(player.pos); player.mesh.rotation.y = player.heading;
     G.camYaw = player.heading; G.ammo = 12;
-    // 3 guards with red markers ahead of the player
-    const guardPos = [[-92, 32], [-84, 24], [-112, 28]];
+    // 6 guards with red markers ahead of the player
+    const guardPos = [[38, 82], [48, 108], [55, 88], [70, 100], [44, 98], [78, 86]];
     for (const [gx, gz] of guardPos) spawnCop(gx, gz, true);
     // one guard already down, one tracer line in the air (frozen firefight)
-    const down = spawnCop(-98, 20, true); down.down = true; down.downT = 0; down.group.rotation.x = Math.PI / 2;
+    const down = spawnCop(62, 108, true); down.down = true; down.downT = 0; down.group.rotation.x = Math.PI / 2;
     const geo = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(player.pos.x, 1.6, player.pos.z),
-      new THREE.Vector3(-92, 1.4, 32),
+      new THREE.Vector3(38, 1.4, 82),
     ]);
     const tr = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffe9a8 })); scene.add(tr);
+    // burning van: dark wreck + big flame cones + smoke column, close to the player
+    const van = spawnCar(48, 92, Math.PI / 2, 0x14141a, { name: 'BURNING VAN' });
+    van.group.position.y = 0;
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(1.9, 4.6, 8), new THREE.MeshBasicMaterial({ color: 0xff7a00 }));
+    flame.position.set(48, 3.4, 92); scene.add(flame);
+    const flame2 = new THREE.Mesh(new THREE.ConeGeometry(1.2, 3.0, 8), new THREE.MeshBasicMaterial({ color: 0xffd23d }));
+    flame2.position.set(48, 3.0, 92); scene.add(flame2);
+    const smoke = new THREE.Mesh(new THREE.SphereGeometry(2.4, 8, 6), new THREE.MeshBasicMaterial({ color: 0x1c1c20, transparent: true, opacity: 0.75 }));
+    smoke.position.set(48, 6.4, 92); scene.add(smoke);
+    const smoke2 = new THREE.Mesh(new THREE.SphereGeometry(1.8, 8, 6), new THREE.MeshBasicMaterial({ color: 0x2a2a30, transparent: true, opacity: 0.55 }));
+    smoke2.position.set(48, 8.6, 92); scene.add(smoke2);
     // peds fleeing the gunfire
     peds.slice(0, 8).forEach(p => { p.state = 'flee'; p.fleeT = 5; });
-    clusterNear(-105, 45);
+    clusterNear(20, 95);
     peds.slice(0, 8).forEach(p => { p.state = 'flee'; p.fleeT = 5; });
   } else if (name === 'drive') {
     const car = spawnCar(-5, 45, 0, 0xc0392b, {});
@@ -1053,6 +1092,12 @@ function stageShot(name) {
     G.camYaw = player.heading; clusterNear(city.pickup.x, city.pickup.z);
   }
   updateObjective();
+  // the shootout shot overrides the objective text after updateObjective — restore it
+  if (name === 'shootout') {
+    $('objective-title').textContent = 'CH.5 STORM SURGE · MISSION 7/7 — THE LAMPLIGHTER · $50,000';
+    $('objective-text').textContent = 'Clear out the guards (6 left) — the Combine\'s crew holds this street.';
+    $('objective-next').textContent = 'NEXT Deliver the files to the harbor pier';
+  }
   updateHUD(1);
   show($('toast'), false); // staging toasts (e.g. "Car stolen") must not leak into the shot
   show($('banner'), false);
