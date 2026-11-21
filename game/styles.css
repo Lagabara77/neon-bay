@@ -5,16 +5,32 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1030; fon
 .hidden { display: none !important; }
 #hud { position: absolute; inset: 0; pointer-events: none; }
 #top-left { position: absolute; top: 14px; left: 14px; }
-#health-wrap { width: 220px; height: 18px; background: rgba(0,0,0,.55); border: 1px solid #fff3; border-radius: 4px; position: relative; overflow: hidden; }
+/* round 8: three labelled bars (HEALTH / ARMOUR / RESPECT) stacked top-left */
+.bar-row { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+.bar-label { width: 58px; font-size: 10px; font-weight: 800; letter-spacing: 1px; color: #ffd23d; text-shadow: 0 1px 2px #000; text-align: right; }
+#health-wrap, #armour-wrap, #respect-wrap-top { width: 160px; height: 16px; background: rgba(0,0,0,.55); border: 1px solid #fff3; border-radius: 4px; position: relative; overflow: hidden; }
 #health-bar { height: 100%; width: 100%; background: linear-gradient(90deg,#ff2d78,#ff7a3d); }
-#health-text { position: absolute; inset: 0; text-align: center; font-size: 12px; line-height: 18px; font-weight: bold; text-shadow: 0 1px 2px #000; }
+#armour-bar { height: 100%; width: 60%; background: linear-gradient(90deg,#00e5ff,#7de3ff); }
+#respect-bar-top { height: 100%; width: 0%; background: linear-gradient(90deg,#ffd23d,#ff7a3d); }
+#health-text, #armour-text, #respect-text-top { position: absolute; inset: 0; text-align: center; font-size: 11px; line-height: 16px; font-weight: bold; text-shadow: 0 1px 2px #000; }
 #money { margin-top: 6px; font-size: 26px; font-weight: 800; color: #7dff9a; text-shadow: 0 2px 4px #000; }
 #wanted { margin-top: 4px; font-size: 26px; letter-spacing: 2px; color: #ffd23d; text-shadow: 0 0 8px #000, 0 0 14px #f80; min-height: 30px; }
 #wanted .dim { color: rgba(255,255,255,.22); text-shadow: none; }
+/* round 8: wanted status line under the stars (IN SIGHT / SEARCHING / CLEAN) */
+#wanted-status { font-size: 12px; font-weight: 800; letter-spacing: 3px; text-shadow: 0 1px 2px #000; margin-top: 1px; }
+#wanted-status.sight { color: #ff5c5c; }
+#wanted-status.searching { color: #ffb13d; }
+#wanted-status.clean { color: rgba(255,255,255,.55); }
 #objective { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); background: rgba(10,5,30,.72); border: 1px solid #ff2d78; border-left: 5px solid #ff2d78; padding: 8px 16px; border-radius: 4px; max-width: 520px; text-align: center; }
 #objective-title { display: block; font-weight: 800; color: #ffb3d1; letter-spacing: 1px; font-size: 13px; text-transform: uppercase; }
 #objective-text { font-size: 15px; }
 #objective-next { display: block; font-size: 12px; color: #ffd23d; margin-top: 2px; }
+/* round 8: objective counter (GUARDS n/10) + race HUD, centred below the district card */
+#guards-counter, #race-hud { position: absolute; top: 192px; left: 50%; transform: translateX(-50%); background: rgba(10,5,30,.8); border: 1px solid #ff2222; border-radius: 4px; padding: 6px 16px; font-size: 15px; font-weight: 800; letter-spacing: 2px; color: #fff; text-shadow: 0 1px 3px #000; white-space: nowrap; z-index: 3; }
+#race-hud { border-color: #ffd23d; display: flex; gap: 18px; }
+#race-hud #race-pos { color: #ffd23d; }
+#race-hud #race-cp { color: #7dff9a; }
+#race-hud #race-dist { color: #9fd8ff; }
 /* giant district title card: flashes centre-top whenever the player enters a
    new district, so the place reads in one second (round 6) */
 #district-card { position: absolute; top: 104px; left: 50%; transform: translateX(-50%); text-align: center; text-shadow: 0 2px 10px #000, 0 0 22px rgba(255,45,120,.65); }
@@ -37,11 +53,17 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1030; fon
 /* vehicle + rank card, above the speedometer */
 #vehicle-card { position: absolute; right: 14px; bottom: 262px; width: 220px; background: rgba(10,5,30,.72); border: 1px solid #3d3552; border-radius: 4px; padding: 6px 10px; font-size: 12px; text-align: right; }
 #vehicle-name { display: block; font-weight: 800; color: #fff; }
+/* round 8: CONDITION bar under the vehicle name */
+#condition-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.cond-label { font-size: 9px; font-weight: 800; letter-spacing: 1px; color: #ffd23d; }
+#condition-wrap { flex: 1; height: 7px; background: rgba(255,255,255,.15); border-radius: 4px; overflow: hidden; }
+#condition-bar { height: 100%; width: 84%; background: linear-gradient(90deg,#7dff9a,#00e5ff); }
 #rank-line { display: block; color: #ffd23d; font-weight: 700; margin-top: 2px; }
 #respect-wrap { height: 7px; background: rgba(255,255,255,.15); border-radius: 4px; margin-top: 4px; overflow: hidden; }
 #respect-bar { height: 100%; width: 0%; background: linear-gradient(90deg,#ffd23d,#ff7a3d); }
-#speedo { position: absolute; right: 18px; bottom: 200px; font-size: 42px; font-weight: 800; text-shadow: 0 2px 6px #000; }
-#speedo small { font-size: 14px; color: #ffd23d; }
+/* round 8: big speedo in KM/H (was 42px + mph) */
+#speedo { position: absolute; right: 18px; bottom: 200px; font-size: 64px; font-weight: 800; text-shadow: 0 2px 6px #000; }
+#speedo small { font-size: 16px; color: #ffd23d; }
 #minimap { position: absolute; right: 14px; bottom: 14px; width: 180px; height: 180px; border: 2px solid rgba(255,255,255,.5); border-radius: 50%; background: #141021; box-shadow: 0 0 0 4px rgba(0,0,0,.4); }
 /* weapon wheel: 4 slots bottom-left, above the hint */
 #weapons { position: absolute; left: 14px; bottom: 44px; display: flex; gap: 6px; }
@@ -50,6 +72,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1030; fon
 .wslot.sel { border-color: #ffd23d; box-shadow: 0 0 8px rgba(255,210,61,.5); }
 .wslot.locked { color: #9a93b8; }
 .wslot.locked b { color: #9a93b8; }
+.wslot .wammo { color: #ffd23d; font-weight: 800; margin-left: 3px; }
+.wslot.locked .wammo { color: #9a93b8; }
 /* character dialog box, bottom-centre */
 #dialog { position: absolute; bottom: 108px; left: 50%; transform: translateX(-50%); max-width: 560px; background: rgba(10,5,30,.82); border: 1px solid #00e5ff; border-left: 5px solid #00e5ff; border-radius: 4px; padding: 8px 14px; font-size: 14px; }
 #dialog-who { display: block; font-size: 11px; letter-spacing: 1px; color: #00e5ff; margin-bottom: 2px; }
@@ -77,23 +101,41 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1030; fon
 .slot .act { color: #fff; font-weight: 800; font-size: 11px; white-space: nowrap; }
 /* round 7: empty slots stay small and dim so they stop reading as dead space */
 #slot-2, #slot-3 { opacity: .55; padding: 6px 12px; }
-/* MAP & STATS pause screen */
+/* MAP & STATS pause screen — round 8: top-aligned (the header + tabs + 10-mission
+   list no longer fit a centred 720 px screen; the old centred layout clipped the
+   PAUSED header off the top edge) */
+#pause { justify-content: flex-start; padding-top: 10px; }
+#pause .buttons { margin: 10px 0; }
+#pause .buttons button { padding: 10px 24px; }
 #pause h2 { font-size: 40px; margin-bottom: 12px; }
 /* round 7: % complete ring (conic-gradient set from live state in fillMapScreen) */
 #map-progress { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
-#progress-ring { width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: conic-gradient(#ffd23d 154.8deg, rgba(255,255,255,.15) 0deg); flex: none; }
-#progress-pct { width: 50px; height: 50px; border-radius: 50%; background: #141021; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #ffd23d; }
+#progress-ring { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: conic-gradient(#ffd23d 154.8deg, rgba(255,255,255,.15) 0deg); flex: none; }
+#progress-pct { width: 44px; height: 44px; border-radius: 50%; background: #141021; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: #ffd23d; }
 #progress-caption { font-size: 13px; font-weight: 700; letter-spacing: 1px; color: #fff; }
 #progress-caption b { color: #ffd23d; }
 #map-grid { display: flex; gap: 16px; align-items: flex-start; text-align: left; }
 #map-canvas { border: 2px solid rgba(255,255,255,.4); border-radius: 6px; background: #141021; display: block; }
-#map-legend { font-size: 11px; color: #bdb2e8; margin-top: 6px; letter-spacing: 1px; line-height: 1.7; }
+#map-legend { font-size: 11px; color: #bdb2e8; margin-top: 6px; letter-spacing: 1px; line-height: 1.5; }
 #map-legend .poi-r { color: #ff2d78; font-weight: 800; }
 #map-legend .poi-s { color: #ffd23d; font-weight: 800; }
 #map-legend .poi-h { color: #7dff9a; font-weight: 800; }
 #map-legend .poi-c { color: #ff5c5c; font-weight: 800; }
-#map-right { width: 380px; font-size: 13px; line-height: 1.5; }
-#map-missions, #map-stats, #map-collect { background: rgba(10,5,30,.72); border: 1px solid #3d3552; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; }
+#map-legend .poi-k { color: #ff8ad9; font-weight: 800; }
+#map-legend .poi-c2 { color: #ff9a5c; font-weight: 800; }
+#map-legend .poi-p { color: #9fd8ff; font-weight: 800; }
+#map-legend .poi-d { color: #7de3ff; font-weight: 800; }
+#map-legend .poi-l { color: #c9a86a; font-weight: 800; }
+#map-legend .poi-j { color: #ff7a3d; font-weight: 800; }
+#map-legend .poi-s2 { color: #00e5ff; font-weight: 800; }
+#map-legend .poi-g { color: #ffffff; font-weight: 800; }
+/* round 8: PAUSED header + tab bar on the MAP screen */
+#pause-header { font-size: 15px; font-weight: 800; letter-spacing: 3px; color: #ffd23d; text-shadow: 0 1px 4px #000; margin-bottom: 6px; }
+#pause-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+#pause-tabs .tab { font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #bdb2e8; background: rgba(10,5,30,.6); border: 1px solid #3d3552; border-radius: 4px 4px 0 0; padding: 6px 16px; }
+#pause-tabs .tab.sel { color: #141021; background: #ffd23d; border-color: #ffd23d; }
+#map-right { width: 380px; font-size: 12px; line-height: 1.45; }
+#map-missions, #map-stats, #map-collect { background: rgba(10,5,30,.72); border: 1px solid #3d3552; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
 #map-missions h3, #map-stats h3, #map-collect h3 { margin: 0 0 6px; font-size: 12px; letter-spacing: 1px; color: #ffd23d; }
 .mrow { display: flex; justify-content: space-between; gap: 8px; }
 .mrow.done { color: #7dff9a; }
@@ -109,7 +151,7 @@ body.touch #objective { max-width: 86vw; top: 102px; }
 body.touch #district-card { top: 190px; }
 body.touch #district-card-name { font-size: 30px; letter-spacing: 5px; }
 body.touch #minimap { width: 120px; height: 120px; }
-body.touch #speedo { bottom: 240px; right: 14px; font-size: 32px; }
+body.touch #speedo { bottom: 240px; right: 14px; font-size: 40px; }
 body.touch #top-right { display: none; }
 body.touch #weapons { bottom: 200px; }
 body.touch #dialog { bottom: 260px; max-width: 86vw; }

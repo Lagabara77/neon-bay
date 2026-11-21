@@ -5,7 +5,7 @@
 // /output and writes /output/dossier.json, the summary the judge reads, with the vendored
 // make.fun library. The game itself is Neon Bay, an original open-world crime game: a low-poly
 // dusk city to walk and drive through, traffic and pedestrians, a 5-star wanted system with
-// police chases and a Bay PD helicopter at wanted 4+, seven story missions in five chapters
+// police chases and a Bay PD helicopter at wanted 4+, ten story missions in five chapters
 // for Mara Voss's crew, combat, a dense named HUD (police dispatch, weapon wheel, radio,
 // district standing, rank and respect), a full MAP & STATS pause screen, 20 Golden Gecko
 // collectibles, saves and procedural WebAudio. Put 4 JPEG screenshots in screenshots/

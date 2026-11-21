@@ -15,11 +15,16 @@
   <canvas id="game"></canvas>
   <div id="hud" class="hidden">
     <div id="top-left">
-      <div id="health-wrap"><div id="health-bar"></div><span id="health-text">100</span></div>
+      <div class="bar-row"><span class="bar-label">HEALTH</span><div id="health-wrap"><div id="health-bar"></div><span id="health-text">100</span></div></div>
+      <div class="bar-row"><span class="bar-label">ARMOUR</span><div id="armour-wrap"><div id="armour-bar"></div><span id="armour-text">60</span></div></div>
+      <div class="bar-row"><span class="bar-label">RESPECT</span><div id="respect-wrap-top"><div id="respect-bar-top"></div><span id="respect-text-top">0</span></div></div>
       <div id="money">$<span id="money-text">250</span></div>
       <div id="wanted"></div>
+      <div id="wanted-status" class="clean">CLEAN</div>
     </div>
     <div id="objective" class="hidden"><span id="objective-title"></span><span id="objective-text"></span><span id="objective-next"></span></div>
+    <div id="guards-counter" class="hidden">GUARDS 6/10</div>
+    <div id="race-hud" class="hidden"><span id="race-pos">POSITION 3/4</span><span id="race-cp">CHECKPOINT 3/5</span><span id="race-dist">296 m</span></div>
     <div id="district-card" class="hidden"><span id="district-card-name">MARINA ROW</span><span id="district-card-sub">NEON BAY</span></div>
     <div id="top-right">
       <div id="dispatch"><div id="dispatch-title">BAY PD RESPONSE · 0 UNITS</div><div id="dispatch-rows"></div></div>
@@ -27,14 +32,14 @@
       <div id="clock-line"><span id="clock-text">DAY 4 · 18:16</span><span id="district-text">KUMALA STRAND · NEUTRAL 58</span></div>
       <div id="radio-line"><span id="radio-station">NEON FM 98.6</span><span id="radio-song">Midnight Mirage — Vela Roja</span></div>
     </div>
-    <div id="vehicle-card" class="hidden"><span id="vehicle-name">VIREO GT · 84%</span><span id="rank-line">SHOT CALLER · 290/550 RESPECT</span><div id="respect-wrap"><div id="respect-bar"></div></div></div>
-    <div id="speedo" class="hidden"><span id="speed-text">0</span><small>mph</small></div>
+    <div id="vehicle-card" class="hidden"><span id="vehicle-name">VIREO GT · 84%</span><div id="condition-row"><span class="cond-label">CONDITION</span><div id="condition-wrap"><div id="condition-bar"></div></div></div><span id="rank-line">SHOT CALLER · 290/550 RESPECT</span><div id="respect-wrap"><div id="respect-bar"></div></div></div>
+    <div id="speedo" class="hidden"><span id="speed-text">0</span><small>KM/H</small></div>
     <canvas id="minimap" width="180" height="180"></canvas>
     <div id="weapons">
-      <div class="wslot sel" id="wslot-0"><b>1</b> FISTS</div>
+      <div class="wslot sel" id="wslot-0"><b>1</b> FISTS <span class="wammo">—</span></div>
       <div class="wslot" id="wslot-1"><b>2</b> P9 <span id="ammo-text">12</span></div>
-      <div class="wslot locked" id="wslot-2"><b>3</b> SMG · $1,900</div>
-      <div class="wslot locked" id="wslot-3"><b>4</b> AR-9 · $9,000</div>
+      <div class="wslot locked" id="wslot-2"><b>3</b> SMG · $1,900 <span class="wammo">—</span></div>
+      <div class="wslot locked" id="wslot-3"><b>4</b> AR-9 · $9,000 <span class="wammo">—</span></div>
     </div>
     <div id="dialog" class="hidden"><b id="dialog-who">MARA VOSS · CREW BOSS</b><span id="dialog-text"></span></div>
     <div id="hint">WASD move &middot; Shift run &middot; E enter/exit car &middot; F punch &middot; Q shoot &middot; R reload &middot; M mute &middot; Esc pause</div>
@@ -62,16 +67,17 @@
       <div class="slot" id="slot-3"><b>SLOT 3</b><span>EMPTY</span></div>
     </div>
     <p class="controls">WASD move &middot; mouse drag orbit &middot; Shift run &middot; E car &middot; F punch &middot; Q shoot &middot; R reload &middot; M mute &middot; Esc pause</p>
-    <p class="scope-line">A CITY OF SEVEN DISTRICTS &middot; 7 STORY MISSIONS &middot; BAY PD PURSUIT AI &middot; RADIO NEON 98.6</p>
+    <p class="scope-line">A CITY OF SEVEN DISTRICTS &middot; 10 STORY MISSIONS &middot; BAY PD PURSUIT AI &middot; RADIO NEON 98.6</p>
     <p class="foot">Original game &middot; no affiliation with any real city or franchise</p>
   </div>
   <div id="pause" class="screen hidden">
-    <h2>MAP &amp; STATS</h2>
+    <div id="pause-header">PAUSED · DAY 9 · 18:23</div>
+    <div id="pause-tabs"><span class="tab sel">MAP</span><span class="tab">MISSIONS</span><span class="tab">STATS</span><span class="tab">CONTROLS</span><span class="tab">SETTINGS</span></div>
     <div id="map-grid">
       <div id="map-left">
-        <div id="map-progress"><div id="progress-ring"><span id="progress-pct">43%</span></div><span id="progress-caption"><b>43% COMPLETE</b> · 3/7 MISSIONS</span></div>
-        <canvas id="map-canvas" width="520" height="300"></canvas>
-        <div id="map-legend">7 DISTRICTS · GOLD = MISSION TARGET · RED = BAY PD · YELLOW = AIR ONE<br><span class="poi-r">R</span> RACE &middot; <span class="poi-s">$</span> STASH &middot; <span class="poi-h">H</span> SAFEHOUSE &middot; <span class="poi-c">+</span> CLINIC</div>
+        <div id="map-progress"><div id="progress-ring"><span id="progress-pct">30%</span></div><span id="progress-caption"><b>30% COMPLETE</b> · 3/10 MISSIONS</span></div>
+        <canvas id="map-canvas" width="520" height="230"></canvas>
+        <div id="map-legend">7 DISTRICTS · GOLD = MISSION TARGET · RED = BAY PD · YELLOW = AIR ONE<br><span class="poi-r">R</span> RACE — STRAND SPRINT &middot; <span class="poi-s">$</span> STASH — HARBOR STASH &middot; <span class="poi-h">H</span> SAFEHOUSE — MARA'S GARAGE &middot; <span class="poi-c">+</span> CLINIC — BAY GENERAL<br><span class="poi-k">K</span> NIGHT MARKET &middot; <span class="poi-c2">C</span> CHOP SHOP &middot; <span class="poi-p">P</span> BAY PD &middot; <span class="poi-d">D</span> IRONJAW DOCKS<br><span class="poi-l">L</span> LANTERN STASH &middot; <span class="poi-j">J</span> STUNT JUMP &middot; <span class="poi-s2">S</span> MARA VOSS — STORY &middot; <span class="poi-g">G</span> GOLDEN GECKO</div>
       </div>
       <div id="map-right">
         <div id="map-missions"></div>

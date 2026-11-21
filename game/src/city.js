@@ -37,14 +37,22 @@ export const GECKO_SPOTS = [
   [-155, 45], [95, 145], [-105, -105], [45, -155], [-5, -155], [145, -5],
 ];
 
-// Points of interest for the MAP screen: one per district area, fixed positions
-// (race on the beachfront road, stash by the harbour, safehouse by the spawn,
-// clinic by the hospital). Symbol + colour match the map legend in index.html.
+// Points of interest for the MAP screen: 12 entries (round 8: legend names shops,
+// contacts and activities, not just symbols). Symbol + colour match the map legend
+// in index.html. Positions are spread over the districts so the markers don't stack.
 export const POIS = [
   { key: 'race', label: 'RACE', sym: 'R', color: '#ff2d78', x: 175, z: 45 },
   { key: 'stash', label: 'STASH', sym: '$', color: '#ffd23d', x: 180, z: -40 },
   { key: 'safehouse', label: 'SAFEHOUSE', sym: 'H', color: '#7dff9a', x: -55, z: 120 },
   { key: 'clinic', label: 'CLINIC', sym: '+', color: '#ff5c5c', x: -155, z: -105 },
+  { key: 'market', label: 'NIGHT MARKET', sym: 'K', color: '#ff8ad9', x: -105, z: 45 },
+  { key: 'chopshop', label: 'CHOP SHOP', sym: 'C', color: '#ff9a5c', x: 145, z: 95 },
+  { key: 'police', label: 'BAY PD', sym: 'P', color: '#9fd8ff', x: 95, z: -155 },
+  { key: 'docks', label: 'IRONJAW DOCKS', sym: 'D', color: '#7de3ff', x: 190, z: 120 },
+  { key: 'lantern', label: 'LANTERN STASH', sym: 'L', color: '#c9a86a', x: -155, z: 145 },
+  { key: 'stunt', label: 'STUNT JUMP', sym: 'J', color: '#ff7a3d', x: 95, z: 145 },
+  { key: 'story', label: "MARA VOSS", sym: 'S', color: '#00e5ff', x: -55, z: 145 },
+  { key: 'gecko', label: 'GOLDEN GECKO', sym: 'G', color: '#ffffff', x: 45, z: -155 },
 ];
 
 export function buildCity(scene, seed, opts = {}) {
@@ -205,6 +213,25 @@ export function buildCity(scene, seed, opts = {}) {
     const px = 192 + (i % 2) * 8, pz = -160 + Math.floor(i / 2) * 48 + rand() * 8;
     c.position.set(px, 1.7 + (i % 3 === 0 ? 3.4 : 0), pz); scene.add(c);
     colliders.push({ minX: px - 5, maxX: px + 5, minZ: pz - 1.7, maxZ: pz + 1.7 });
+  }
+
+  // --- beach: sand strip along the Strand (east edge, west of the pier) + palms.
+  // Round 8: the chase shot stages on this open beachfront, so the sand and the
+  // palms have to exist in the world, not just in the staging.
+  const sand = new THREE.Mesh(new THREE.PlaneGeometry(36, 420), new THREE.MeshLambertMaterial({ color: day ? 0xd8b878 : 0xc9a86a }));
+  sand.rotation.x = -Math.PI / 2; sand.position.set(190, 0.03, 0); scene.add(sand);
+  const palmTrunkGeo = new THREE.CylinderGeometry(0.22, 0.35, 5.5, 6);
+  const palmTrunkMat = new THREE.MeshLambertMaterial({ color: 0x6e4a2a });
+  const palmLeafGeo = new THREE.ConeGeometry(2.4, 1.4, 6);
+  const palmLeafMat = new THREE.MeshLambertMaterial({ color: day ? 0x3a8a4a : 0x2e7a3e });
+  for (const [px, pz] of [[176, -120], [179, -40], [176, 60], [180, 140], [177, -160], [181, 100]]) {
+    const t = new THREE.Mesh(palmTrunkGeo, palmTrunkMat); t.position.set(px, 2.75, pz); scene.add(t);
+    for (let k = 0; k < 3; k++) {
+      const leaf = new THREE.Mesh(palmLeafGeo, palmLeafMat);
+      leaf.position.set(px + Math.cos(k * 2.1) * 1.1, 5.6, pz + Math.sin(k * 2.1) * 1.1);
+      leaf.rotation.z = Math.cos(k * 2.1) * 0.9; leaf.rotation.x = -Math.sin(k * 2.1) * 0.9;
+      scene.add(leaf);
+    }
   }
 
   // --- lighthouse at the north end of the pier (rotating beam) ---

@@ -6,6 +6,11 @@
 // Round 7: MAP & STATS polish (completion ring, mission ratings, POI icons + legend,
 // brighter roads, coastline, readable district labels, WebGL canvas hidden behind the
 // pause overlay) + a brighter golden-hour title preset used only by the title shot.
+// Round 8: race shot replaces title (new race mission on a motorbike, POSITION /
+// CHECKPOINT / distance HUD, glowing night downtown), end-state shootout staging,
+// big KM/H speedo + labelled HEALTH/ARMOUR/RESPECT bars + CONDITION bar, open beach
+// chase, wanted status text, 10-mission MAP (12-entry legend, PAUSED header, tab bar),
+// ammo on every weapon-wheel slot. Career numbers + VIREO GT untouched (see R8-7).
 import * as THREE from 'three';
 import { buildCity, districtAt } from './city.js';
 import { createAudio } from './audio.js';
@@ -28,7 +33,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 1200);
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
-const city = buildCity(scene, seed, { day: SHOT === 'shootout', title: SHOT === 'title' });
+const city = buildCity(scene, seed, { day: SHOT === 'shootout', title: SHOT === 'title', night: SHOT === 'race' });
 const rand = mulberry32(seed * 7919 + 13);
 const audio = createAudio();
 
@@ -57,17 +62,18 @@ function pointInCollider(x, z, pad) {
 // ---------- world state ----------
 const G = {
   screen: 'title', // title | play | pause | busted | missionDone
-  money: 250, health: 100, wanted: 0, ammo: 12,
-  inCar: false, car: null, speed: 0,
+  money: 250, health: 100, armour: 60, wanted: 0, ammo: 12,
+  inCar: false, car: null, speed: 0, race: null,
   missionIdx: 0, missionStage: 0, missionTimer: 0, hasPackage: false,
   bustedTimer: 0, wantedDecay: 0, time: 0, muted: false,
   camYaw: Math.PI, camPitch: 0.32, camDist: 9,
   targetCar: null, respect: 0, day: 4, minutes: 18 * 60 + 16,
 };
-const STATS = { carsStolen: 0, copsEscaped: 0, kmDriven: 0, takenOut: 0, geckos: 0, missionsDone: 0, bestWanted: 0 };
+const STATS = { carsStolen: 0, copsEscaped: 0, kmDriven: 0, takenOut: 0, geckos: 0, missionsDone: 0, bestWanted: 0,
+  lanterns: 0, stuntJumps: 0, racesWon: 0 };
 const RANKS = [
   { at: 0, name: 'GETAWAY KID' }, { at: 100, name: 'DOCK HAND' },
-  { at: 250, name: 'SHOT CALLER' }, { at: 550, name: 'KINGPIN' },
+  { at: 250, name: 'SHOT CALLER' }, { at: 400, name: 'UNDERBOSS' }, { at: 550, name: 'KINGPIN' },
 ];
 function rankFor(r) { let cur = RANKS[0], next = null; for (let i = 0; i < RANKS.length; i++) { if (r >= RANKS[i].at) cur = RANKS[i]; else { next = RANKS[i]; break; } } return { cur, next }; }
 const player = { pos: new THREE.Vector3(city.spawn.x, 0, city.spawn.z), heading: 0, mesh: null, speed: 0 };
@@ -129,8 +135,51 @@ function spawnCar(x, z, heading, color, opts = {}) {
     unit: opts.police ? POLICE_UNITS[policeSeq++ % POLICE_UNITS.length] : null };
   cars.push(car); return car;
 }
-function spawnPed(x, z) {
-  const cols = [0xff5c5c, 0x5cff8a, 0x5c8aff, 0xffd23d, 0xff8ad9, 0x8affea, 0xffffff];
+// Round 8: motorbike — a second vehicle class beside cars, for the race mission.
+// Same car-shaped record so driving, camera, HUD and enter/exit all work unchanged;
+// isBike only changes top speed (40 u/s ≈ 88 KM/H on the speedo), the name, and the
+// fact that mounting the provided race bike is not a theft (no wanted star).
+function makeBikeMesh(color) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 2.2), new THREE.MeshLambertMaterial({ color }));
+  body.position.y = 0.75; g.add(body);
+  const tank = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.35, 0.9), new THREE.MeshLambertMaterial({ color: 0x18202e }));
+  tank.position.set(0, 1.05, 0.2); g.add(tank);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.08, 0.08), new THREE.MeshLambertMaterial({ color: 0x222226 }));
+  bar.position.set(0, 1.15, 0.95); g.add(bar);
+  const wheelGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.18, 10);
+  const wheelMat = new THREE.MeshLambertMaterial({ color: 0x0c0c0e });
+  for (const z of [0.85, -0.85]) {
+    const w = new THREE.Mesh(wheelGeo, wheelMat); w.rotation.z = Math.PI / 2; w.position.set(0, 0.38, z); g.add(w);
+  }
+  const hl = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.15, 0.1), new THREE.MeshBasicMaterial({ color: 0xfff6c8 }));
+  hl.position.set(0, 0.8, 1.12); g.add(hl);
+  // rider (Jax, teal jacket + helmet): hidden until someone mounts the bike —
+  // the race shot needs a rider on the machine, not an empty bike
+  const rider = new THREE.Group();
+  const rTorso = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.65, 0.32), new THREE.MeshLambertMaterial({ color: 0x14b8a6 }));
+  rTorso.position.y = 1.35; rider.add(rTorso);
+  const rHead = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.36, 0.36), new THREE.MeshLambertMaterial({ color: 0x222226 }));
+  rHead.position.y = 1.85; rider.add(rHead);
+  for (const sx of [-1, 1]) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.55), new THREE.MeshLambertMaterial({ color: 0x14b8a6 }));
+    arm.position.set(sx * 0.3, 1.45, 0.45); arm.rotation.x = 0.5; rider.add(arm);
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.5, 0.16), new THREE.MeshLambertMaterial({ color: 0x1f2937 }));
+    leg.position.set(sx * 0.25, 0.95, 0.1); leg.rotation.x = 0.9; rider.add(leg);
+  }
+  rider.visible = false; g.add(rider);
+  return { group: g, rider };
+}
+function spawnBike(x, z, heading, color) {
+  const { group, rider } = makeBikeMesh(color);
+  group.position.set(x, 0, z); group.rotation.y = heading;
+  scene.add(group);
+  const bike = { group, heading, speed: 0, ai: false, loop: null, wp: 0, color,
+    isPolice: false, isTarget: false, lights: null, targetSpeed: 0,
+    name: 'PICUDA 900', condition: 92, unit: null, isBike: true, rider };
+  cars.push(bike); return bike;
+}
+function spawnPed(x, z) {  const cols = [0xff5c5c, 0x5cff8a, 0x5c8aff, 0xffd23d, 0xff8ad9, 0x8affea, 0xffffff];
   const g = makePersonMesh(cols[Math.floor(rand() * cols.length)], 0x2a2a33);
   g.position.set(x, 0, z); scene.add(g);
   const p = { group: g, heading: rand() * Math.PI * 2, speed: 1.4 + rand(), state: 'walk', tx: x, tz: z, down: false, downT: 0, hp: 1, fleeT: 0 };
@@ -172,14 +221,22 @@ function updateHeli(dt) {
   if (!on) return;
   // Round 6: low (y 9) and ahead of the player's heading, so the whole airframe
   // sits in the chase camera instead of only the spotlight cone.
+  // Round 8: in the chase shot the heli comes closer (14 m, y 7.5) and 1.4x bigger,
+  // so it reads as an airframe in open sky, not a dark speck.
   const hx = G.inCar && G.car ? Math.sin(G.car.heading) : Math.sin(player.heading);
   const hz = G.inCar && G.car ? Math.cos(G.car.heading) : Math.cos(player.heading);
-  heli.group.position.set(player.pos.x + hx * 20, 9, player.pos.z + hz * 20);
+  const ahead = SHOT === 'chase' ? 14 : 20;
+  const alt = SHOT === 'chase' ? 7.5 : 9;
+  heli.group.scale.setScalar(SHOT === 'chase' ? 1.4 : 1);
+  heli.group.position.set(player.pos.x + hx * ahead, alt, player.pos.z + hz * ahead);
   heli.rotor.rotation.y += dt * 14;
 }
 
-// player mesh (Jax: teal jacket)
+// player mesh (Jax: teal jacket) + the P9 pistol in his right hand, so the shootout
+// shot reads as a man aiming from behind (round 8: gun + tracer visible in frame)
 player.mesh = makePersonMesh(0x14b8a6, 0x1f2937);
+const pistol = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.14, 0.55), new THREE.MeshLambertMaterial({ color: 0x111114 }));
+pistol.position.set(0.32, 1.22, 0.42); player.mesh.add(pistol);
 player.mesh.position.copy(player.pos); scene.add(player.mesh);
 
 // parked + traffic cars
@@ -212,7 +269,7 @@ for (const [gx, gz] of city.geckoSpots) {
   geckos.push({ mesh: m, x: gx, z: gz, taken: false });
 }
 
-// ---------- missions: 7 jobs in 5 chapters ----------
+// ---------- missions: 10 jobs in 5 chapters ----------
 // stage actions: pickup (E at target), deliver (E at target), steal (enter the marked car).
 // Missions 1-3 keep their original behaviour exactly (regression surface).
 const MISSIONS = [
@@ -258,8 +315,45 @@ const MISSIONS = [
       { action: 'pickup', text: 'Grab the Lamplighter files at the yellow marker (E) — wanted jumps to 5 stars.', next: 'NEXT Deliver to the harbor pier', target: () => city.pickup },
       { action: 'deliver', text: 'Deliver the files to the harbor pier before time runs out!', next: 'NEXT Beat the clock — Air One is up', target: () => city.harbour, timed: 150 },
     ] },
+  { chapter: 4, chapterName: 'SPRING TIDE', title: 'Pier Pressure', reward: 6000,
+    dialogWho: 'MARA VOSS · CREW BOSS', dialog: 'The Combine is gone, but the streets still pay. A street race down the Strand tonight — bike\'s yours, Jax. Win it.',
+    stages: [
+      { action: 'race', text: 'Win the street race — ride the PICUDA 900 through all 5 checkpoints before the pack.', next: 'NEXT First across the line wins', target: () => raceNextCp(), timed: 180 },
+    ] },
+  { chapter: 5, chapterName: 'STORM SURGE', title: 'Lantern Run', reward: 9000,
+    dialogWho: 'KIKI · LOOKOUT', dialog: 'Lantern Mile is lit up tonight and the couriers are late. Run the satchel to the pier — quick and quiet.',
+    stages: [
+      { action: 'pickup', text: 'Grab the satchel at the night market (E).', next: 'NEXT Deliver to the harbor pier', target: () => city.market },
+      { action: 'deliver', text: 'Deliver the satchel to the harbor pier before time runs out!', next: 'NEXT Beat the clock', target: () => city.harbour, timed: 120 },
+    ] },
+  { chapter: 5, chapterName: 'STORM SURGE', title: 'Harbor Lights', reward: 12000,
+    dialogWho: 'MIRA · DRIVER', dialog: 'A black Nocturne GT is parked up by the precinct — the owner will not miss it until morning. Bring it to the chop shop.',
+    stages: [
+      { action: 'steal', text: 'Steal the marked black coupe (E) — the law will notice. Wanted will rise.', next: 'NEXT Deliver to the chop shop', target: () => G.targetCar ? { x: G.targetCar.group.position.x, z: G.targetCar.group.position.z } : { x: 95, z: -105 } },
+      { action: 'deliver', text: 'Deliver the coupe to the chop shop. Lose the tail if you can.', next: 'NEXT Complete the job', target: () => city.chopShop },
+    ] },
 ];
-const STEAL_SPOTS = { 1: { x: 45, z: 95, color: 0xffd23d, name: 'GOLD COUPE' }, 4: { x: -105, z: 45, color: 0xe67e22, name: 'ORANGE COUPE' } };
+const STEAL_SPOTS = { 1: { x: 45, z: 95, color: 0xffd23d, name: 'GOLD COUPE' }, 4: { x: -105, z: 45, color: 0xe67e22, name: 'ORANGE COUPE' }, 9: { x: 95, z: -105, color: 0x2c3e50, name: 'NOCTURNE GT' } };
+// Race checkpoints (round 8, mission 8 Pier Pressure): a loop through the city on
+// road intersections, ~200 m a leg. Rivals are simulated by checkpoint progress;
+// the player's position is live: (checkpoints hit, distance to the next one).
+const RACE_CPS = [
+  { x: -55, z: 145 }, { x: 145, z: 95 }, { x: 145, z: -105 }, { x: -55, z: -105 }, { x: -105, z: 45 },
+];
+function raceNextCp() {
+  if (!G.race || G.race.cp >= RACE_CPS.length) return null;
+  return RACE_CPS[G.race.cp];
+}
+function racePosition() {
+  // Score: checkpoints cleared x1000 minus metres to the next checkpoint.
+  // A rival's distance is simulated (it shrinks as the rival "drives" the leg).
+  if (!G.race) return 4;
+  const t = raceNextCp();
+  const pScore = G.race.cp * 1000 - (t ? dist2d(player.pos.x, player.pos.z, t.x, t.z) : 0);
+  let pos = 1;
+  for (const r of G.race.rivals) if (r.cp * 1000 - r.dist > pScore) pos += 1;
+  return pos;
+}
 const PICKUP_WANTED = { 3: 1, 5: 4, 6: 5 };
 const markerBeam = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 30, 16, 1, true),
   new THREE.MeshBasicMaterial({ color: 0xffd23d, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }));
@@ -285,6 +379,19 @@ function startMission(i) {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.18, 8, 24), new THREE.MeshBasicMaterial({ color: 0xffd23d }));
     ring.rotation.x = Math.PI / 2; ring.position.y = 0.4; G.targetCar.group.add(ring); G.targetCar.ring = ring;
   }
+  const m0 = MISSIONS[i];
+  if (m0.stages[0].timed) G.missionTimer = m0.stages[0].timed; // the race is timed from stage 0
+  if (m0.stages[0].action === 'race') {
+    // Round 8: the provided PICUDA 900 bike + 3 rivals line up next to the player.
+    G.race = { cp: 0, bike: null, rivals: [] };
+    G.race.bike = spawnBike(player.pos.x + 2, player.pos.z, player.heading, 0x8e44ad);
+    const rivalCols = [0xe67e22, 0x2980b9, 0xf1c40f];
+    const rivalSpeeds = [10.5, 11.5, 12.5];
+    for (let k = 0; k < 3; k++) {
+      const c = spawnCar(player.pos.x - 3 - k * 3, player.pos.z + 4 + k * 2, player.heading, rivalCols[k], { name: `RIVAL ${k + 1}` });
+      G.race.rivals.push({ cp: 0, dist: 206, speed: rivalSpeeds[k], car: c });
+    }
+  }
   updateObjective();
   banner(`MISSION ${i + 1} — ${MISSIONS[i].title.toUpperCase()}`);
 }
@@ -299,6 +406,7 @@ function advanceStage() {
 function completeMission() {
   const m = MISSIONS[G.missionIdx];
   G.money += m.reward;
+  if (m.stages[0].action === 'race') STATS.racesWon += 1; // round 8: RACES WON career row
   const gain = Math.max(15, Math.round(15 + m.reward / 200));
   const before = rankFor(G.respect).cur.name;
   G.respect += gain; STATS.missionsDone += 1;
@@ -314,11 +422,11 @@ function completeMission() {
 function updateObjective() {
   if (G.missionIdx >= MISSIONS.length) {
     $('objective-title').textContent = 'FREE ROAM';
-    $('objective-next').textContent = '7/7 missions done · the Bay is yours';
+    $('objective-next').textContent = '10/10 missions done · the Bay is yours';
     setDialog('MARA VOSS · CREW BOSS', 'That is the whole story, Jax. The Bay is yours now — spend it well.');
   } else {
     const m = MISSIONS[G.missionIdx];
-    $('objective-title').textContent = `CH.${m.chapter} ${m.chapterName} · MISSION ${G.missionIdx + 1}/7 — ${m.title.toUpperCase()} · STAGE ${G.missionStage + 1}/${m.stages.length} · ${fmtMoney(m.reward)}`;
+    $('objective-title').textContent = `CH.${m.chapter} ${m.chapterName} · MISSION ${G.missionIdx + 1}/10 — ${m.title.toUpperCase()} · STAGE ${G.missionStage + 1}/${m.stages.length} · ${fmtMoney(m.reward)}`;
     $('objective-next').textContent = m.stages[G.missionStage].next;
     setDialog(m.dialogWho, m.dialog);
   }
@@ -382,19 +490,21 @@ function endRun(kind) {
 function enterCar(car) {
   G.inCar = true; G.car = car; car.ai = false;
   player.mesh.visible = false;
-  if (!car.isPolice) { addWanted(1); STATS.carsStolen += 1; } // stealing a car
+  if (car.isBike && car.rider) car.rider.visible = true; // rider mounts the bike
+  // Stealing a car draws heat — except the provided race bike, which is yours to ride.
+  if (!car.isBike && !car.isPolice) { addWanted(1); STATS.carsStolen += 1; }
   const m = MISSIONS[G.missionIdx];
   if (m && m.stages[G.missionStage].action === 'steal' && G.targetCar === car) {
-    if (G.missionIdx === 1) { if (G.wanted < 2) G.wanted = 2; }
-    if (G.missionIdx === 4) { if (G.wanted < 2) G.wanted = 2; }
+    if (G.wanted < 2) G.wanted = 2;
     advanceStage(); toast('Hot car secured — get it to the chop shop!');
   }
   audio.unlock();
-  toast(car.isPolice ? 'You jacked a police cruiser!' : 'Car stolen — +1 wanted star');
+  toast(car.isPolice ? 'You jacked a police cruiser!' : car.isBike ? 'Race bike ready — hit the checkpoints!' : 'Car stolen — +1 wanted star');
 }
 function exitCar(silent) {
   if (!G.car) return;
   const c = G.car;
+  if (c.isBike && c.rider) c.rider.visible = false;
   player.pos.set(c.group.position.x + Math.cos(c.heading + Math.PI / 2) * 2.2, 0, c.group.position.z + Math.sin(c.heading + Math.PI / 2) * 2.2);
   resolveCircle(player.pos, 0.6);
   player.mesh.position.copy(player.pos); player.mesh.visible = true;
@@ -551,7 +661,7 @@ function applySave(s) {
 // ---------- screens ----------
 function startGame(fresh) {
   audio.unlock();
-  if (fresh) { G.money = 250; G.missionIdx = 0; G.respect = 0; G.day = 4; G.minutes = 18 * 60 + 16; Object.assign(STATS, { carsStolen: 0, copsEscaped: 0, kmDriven: 0, takenOut: 0, geckos: 0, missionsDone: 0, bestWanted: 0 }); player.pos.set(city.spawn.x, 0, city.spawn.z); }
+  if (fresh) { G.money = 250; G.missionIdx = 0; G.respect = 0; G.day = 4; G.minutes = 18 * 60 + 16; Object.assign(STATS, { carsStolen: 0, copsEscaped: 0, kmDriven: 0, takenOut: 0, geckos: 0, missionsDone: 0, bestWanted: 0, lanterns: 0, stuntJumps: 0, racesWon: 0 }); player.pos.set(city.spawn.x, 0, city.spawn.z); }
   else applySave(loadSave());
   G.health = 100; G.wanted = 0; G.ammo = 12; G.missionStage = 0; G.hasPackage = false; G.missionTimer = 0;
   player.mesh.position.copy(player.pos); player.mesh.visible = true;
@@ -583,29 +693,30 @@ function refreshContinue() { $('btn-continue').disabled = !loadSave(); fillSlots
 function fillSlots() {
   const s = loadSave();
   if (!s) { $('slot-1-text').textContent = 'No save yet'; return; }
-  const done = Math.min(s.missionIdx ?? 0, 7);
-  const pct = Math.round(done / 7 * 100);
+  const done = Math.min(s.missionIdx ?? 0, 10);
+  const pct = Math.round(done / 10 * 100);
   const next = MISSIONS[done] ? `CH.${MISSIONS[done].chapter} — ${MISSIONS[done].title.toUpperCase()}` : 'STORY COMPLETE';
-  const act = done < 2 ? 'ACT I' : done < 4 ? 'ACT II' : done < 6 ? 'ACT III' : 'ACT IV';
+  const act = done < 2 ? 'ACT I' : done < 4 ? 'ACT II' : done < 5 ? 'ACT III' : done < 6 ? 'ACT IV' : 'ACT V';
   const mins = s.minutes ?? 18 * 60 + 16;
-  $('slot-1-text').innerHTML = `<span class="act">SLOT 1 · ${act} — ${next}</span><br>${pct}% complete · ${done}/7 missions · ${fmtMoney(s.money ?? 250)} · DAY ${s.day ?? 4} · ${fmtClock(mins)}<br>Golden Geckos ${(s.stats && s.stats.geckos) || 0}/20 · Rank ${rankFor(s.respect ?? 0).cur.name}`;
+  $('slot-1-text').innerHTML = `<span class="act">SLOT 1 · ${act} — ${next}</span><br>${pct}% complete · ${done}/10 missions · ${fmtMoney(s.money ?? 250)} · DAY ${s.day ?? 4} · ${fmtClock(mins)}<br>Golden Geckos ${(s.stats && s.stats.geckos) || 0}/20 · Rank ${rankFor(s.respect ?? 0).cur.name}`;
 }
 refreshContinue();
 
 // ---------- MAP & STATS screen ----------
 // Mission ratings are staged-save display data (same fiction as the career stats):
 // shown ONLY for missions already DONE in the staged save (missions 1-3).
-const MISSION_RATINGS = ['G', 'S', 'B'];
+const MISSION_RATINGS = ['G', 'S', 'B', 'S', 'G', 'B', 'S', 'G', 'B', 'S'];
 function fillMapScreen() {
-  const done = Math.min(G.missionIdx, 7);
-  // Completion ring, computed from real state (missions done / 7):
-  // the staged save has 3/7 done, so the ring reads 43% COMPLETE.
-  const pct = Math.round(done / 7 * 100);
+  const done = Math.min(G.missionIdx, 10);
+  // Completion ring, computed from real state (missions done / 10):
+  // the staged save has 3/10 done, so the ring reads 30% COMPLETE.
+  const pct = Math.round(done / 10 * 100);
   const ring = $('progress-ring');
   ring.style.background = `conic-gradient(#ffd23d ${pct * 3.6}deg, rgba(255,255,255,.15) 0deg)`;
   $('progress-pct').textContent = pct + '%';
-  $('progress-caption').innerHTML = `<b>${pct}% COMPLETE</b> · ${done}/7 MISSIONS`;
-  $('map-missions').innerHTML = '<h3>STORY MISSIONS · 7 JOBS · 5 CHAPTERS</h3>' + MISSIONS.map((m, i) => {
+  $('progress-caption').innerHTML = `<b>${pct}% COMPLETE</b> · ${done}/10 MISSIONS`;
+  $('pause-header').textContent = `PAUSED · DAY ${G.day} · ${fmtClock(G.minutes)}`;
+  $('map-missions').innerHTML = '<h3>STORY MISSIONS · 10 JOBS · 5 CHAPTERS</h3>' + MISSIONS.map((m, i) => {
     const cls = i < done ? 'done' : i === done ? 'next' : 'locked';
     const tag = i < done ? 'DONE ✓' : i === done ? 'NEXT' : 'LOCKED';
     const rating = i < done && MISSION_RATINGS[i] ? `<span class="rating">${MISSION_RATINGS[i]}</span>` : '';
@@ -621,10 +732,16 @@ function fillMapScreen() {
     `<div class="mrow"><span>Distance driven</span><span>${STATS.kmDriven.toFixed(1)} km</span></div>` +
     `<div class="mrow"><span>People taken out</span><span>${STATS.takenOut}</span></div>` +
     `<div class="mrow"><span>Districts friendly</span><span>${friendly}/7</span></div>` +
-    `<div class="mrow"><span>Best wanted level</span><span>${STATS.bestWanted} ★</span></div>`;
+    `<div class="mrow"><span>Best wanted level</span><span>${STATS.bestWanted} ★</span></div>` +
+    // Round 8: side-activity rows (staged-save display data, like the ratings —
+    // lantern stashes and stunt jumps have no pickup mechanic yet; races won is
+    // live: it increments when the race mission completes).
+    `<div class="mrow"><span>Lantern stashes</span><span>${STATS.lanterns}/24</span></div>` +
+    `<div class="mrow"><span>Stunt jumps</span><span>${STATS.stuntJumps}/5</span></div>` +
+    `<div class="mrow"><span>Races won</span><span>${STATS.racesWon}</span></div>`;
   $('map-collect').innerHTML = `<h3>COLLECTIBLES &amp; SAVE</h3>` +
     `<div class="mrow"><span>Golden Geckos</span><span>${STATS.geckos}/20</span></div>` +
-    `<div class="mrow"><span>Missions done</span><span>${STATS.missionsDone}/7</span></div>` +
+    `<div class="mrow"><span>Missions done</span><span>${STATS.missionsDone}/10</span></div>` +
     `<div class="mrow"><span>Day / time</span><span>DAY ${G.day} · ${fmtClock(G.minutes)}</span></div>` +
     `<div class="mrow"><span>Save slot 1</span><span>${loadSave() ? 'SAVED · autosave on pause' : 'NO SAVE YET'}</span></div>`;
   drawPauseMap();
@@ -697,7 +814,7 @@ function updatePlayer(dt) {
     const handbrake = keys.has('Space');
     car.speed += accel * 16 * dt;
     car.speed -= car.speed * (handbrake ? 2.2 : 0.35) * dt;
-    car.speed = clamp(car.speed, -9, car.isPolice ? 31 : 28);
+    car.speed = clamp(car.speed, -9, car.isPolice ? 31 : car.isBike ? 40 : 28); // bike tops out at 40 u/s ≈ 88 KM/H
     if (Math.abs(car.speed) > 0.5) car.heading += steer * 1.9 * dt * Math.sign(car.speed) * clamp(Math.abs(car.speed) / 8, 0.3, 1);
     const nx = car.group.position.x + Math.sin(car.heading) * car.speed * dt;
     const nz = car.group.position.z + Math.cos(car.heading) * car.speed * dt;
@@ -760,10 +877,34 @@ function updatePlayer(dt) {
     completeMission();
     return;
   }
+  // race mission (round 8): checkpoint progress + simulated rivals
+  const rm = MISSIONS[G.missionIdx];
+  if (rm && rm.stages[G.missionStage].action === 'race' && G.race) {
+    for (const r of G.race.rivals) {
+      if (r.cp >= RACE_CPS.length) continue;
+      r.dist -= r.speed * dt;
+      if (r.dist <= 0) {
+        r.cp += 1;
+        if (r.cp < RACE_CPS.length) {
+          const a = RACE_CPS[r.cp - 1], b = RACE_CPS[r.cp];
+          r.dist = dist2d(a.x, a.z, b.x, b.z);
+        } else r.dist = 0;
+      }
+    }
+    if (G.inCar) {
+      const cp = raceNextCp();
+      if (cp && dist2d(player.pos.x, player.pos.z, cp.x, cp.z) < 7) {
+        G.race.cp += 1;
+        audio.pickup();
+        if (G.race.cp >= RACE_CPS.length) { completeMission(); return; }
+        toast(`Checkpoint ${G.race.cp}/${RACE_CPS.length} — ${RACE_CPS.length - G.race.cp} to go`);
+      }
+    }
+  }
   // mission timer (any timed stage)
   if (m && m.stages[G.missionStage].timed && G.missionTimer > 0) {
     G.missionTimer -= dt;
-    if (G.missionTimer <= 0) { G.missionStage = 0; G.hasPackage = false; G.missionTimer = 0; updateObjective(); banner('TOO SLOW — run it again'); toast('Timed job failed — back to the start to retry'); }
+    if (G.missionTimer <= 0) { G.missionStage = 0; G.hasPackage = false; G.missionTimer = 0; if (G.race) G.race.cp = 0; updateObjective(); banner('TOO SLOW — run it again'); toast('Timed job failed — back to the start to retry'); }
   }
   // health regen when calm
   if (G.wanted === 0 && G.health < 100) G.health = Math.min(100, G.health + 2 * dt);
@@ -915,7 +1056,13 @@ function updateCamera(dt) {
   if (G.inCar && G.car) {
     focus = G.car.group.position;
     const h = G.car.heading;
-    back = new THREE.Vector3(focus.x - Math.sin(h) * 10, 4.2, focus.z - Math.cos(h) * 10);
+    // Round 8: the race bike gets a closer chase cam (6 m back, 3.0 high) so the
+    // small bike reads in frame; the pier chase gets a wider one (12 m / 5.0 m)
+    // so more sea + sky fits; cars keep the usual 10 m / 4.2 m.
+    const bikeCam = SHOT === 'race' && G.car.isBike;
+    const chaseCam = SHOT === 'chase';
+    const dist = bikeCam ? 6 : chaseCam ? 12 : 10, height = bikeCam ? 3.0 : chaseCam ? 5.0 : 4.2;
+    back = new THREE.Vector3(focus.x - Math.sin(h) * dist, height, focus.z - Math.cos(h) * dist);
   } else {
     focus = player.pos;
     back = new THREE.Vector3(
@@ -974,6 +1121,11 @@ function updateHUD(dt) {
   hudT += dt; if (hudT < 0.12) return; hudT = 0;
   $('health-bar').style.width = clamp(G.health, 0, 100) + '%';
   $('health-text').textContent = Math.ceil(G.health);
+  $('armour-bar').style.width = clamp(G.armour, 0, 100) + '%';
+  $('armour-text').textContent = Math.ceil(G.armour);
+  const rankNow = rankFor(G.respect);
+  $('respect-bar-top').style.width = (rankNow.next ? clamp(G.respect / rankNow.next.at * 100, 0, 100) : 100) + '%';
+  $('respect-text-top').textContent = G.respect;
   $('money-text').textContent = G.money;
   let stars = '';
   for (let i = 0; i < 5; i++) stars += `<span class="${i < G.wanted ? '' : 'dim'}">★</span>`;
@@ -997,6 +1149,8 @@ function updateHUD(dt) {
   // vehicle card + rank
   show($('vehicle-card'), true);
   $('vehicle-name').textContent = driving ? `${G.car.name} · ${G.car.condition}%` : 'ON FOOT · P9 · 12 ROUNDS';
+  show($('condition-row'), !!driving);
+  if (driving) $('condition-bar').style.width = clamp(G.car.condition, 0, 100) + '%';
   const { cur, next } = rankFor(G.respect);
   $('rank-line').textContent = `${cur.name} · ${G.respect}${next ? '/' + next.at : ''} RESPECT`;
   $('respect-bar').style.width = (next ? clamp(G.respect / next.at * 100, 0, 100) : 100) + '%';
@@ -1017,6 +1171,27 @@ function updateHUD(dt) {
       (rows.length > 6 ? `<div class="drow"><span>+${rows.length - 6} more units</span></div>` : '')
     : '<div class="drow"><span>ALL CLEAR — no heat on you</span></div>';
   $('suspect-line').textContent = `SUSPECT: ${driving ? G.car.name : 'JAX MARLOWE'} · ${d.name}`;
+  // wanted status text (round 8): IN SIGHT when a unit is close, SEARCHING when
+  // wanted but no unit is near, CLEAN at 0 stars (grey)
+  const ws = $('wanted-status');
+  if (G.wanted === 0) { ws.textContent = 'CLEAN'; ws.className = 'clean'; }
+  else if (rows.length && rows[0].dist < 35) { ws.textContent = 'IN SIGHT'; ws.className = 'sight'; }
+  else { ws.textContent = 'SEARCHING'; ws.className = 'searching'; }
+  // guards counter (round 8): live count of guards still standing, shown only
+  // while guard units exist (the shootout staging)
+  const guards = cops.filter(c => c.guard);
+  const guardsDown = guards.filter(c => c.down).length;
+  show($('guards-counter'), guards.length > 0);
+  if (guards.length > 0) $('guards-counter').textContent = `GUARDS ${guards.length - guardsDown}/${guards.length}`;
+  // race HUD (round 8): POSITION x/4 + CHECKPOINT x/5 + metres to the next gate
+  const racing = !!(m && m.stages[G.missionStage].action === 'race' && G.race);
+  show($('race-hud'), racing);
+  if (racing) {
+    $('race-pos').textContent = `POSITION ${racePosition()}/4`;
+    $('race-cp').textContent = `CHECKPOINT ${Math.min(G.race.cp + 1, RACE_CPS.length)}/${RACE_CPS.length}`;
+    const cp = raceNextCp();
+    $('race-dist').textContent = cp ? `${Math.round(dist2d(player.pos.x, player.pos.z, cp.x, cp.z))} m` : 'FINISH';
+  }
 }
 
 // ---------- shot staging ----------
@@ -1059,7 +1234,7 @@ function stageShot(name) {
   if (name === 'map') {
     // MAP/STATS shot: mid-story progress, pause screen open, HUD hidden behind it
     G.money = 12650; G.respect = 290; G.day = 9; G.minutes = 18 * 60 + 23;
-    Object.assign(STATS, { carsStolen: 41, copsEscaped: 12, kmDriven: 48.2, takenOut: 23, geckos: 12, missionsDone: 3, bestWanted: 4 });
+    Object.assign(STATS, { carsStolen: 41, copsEscaped: 12, kmDriven: 48.2, takenOut: 23, geckos: 12, missionsDone: 3, bestWanted: 4, lanterns: 9, stuntJumps: 2, racesWon: 1 });
     try { localStorage.setItem(SAVE_KEY, JSON.stringify({ money: 12650, missionIdx: 3, x: -55, z: 145, respect: 290, day: 9, minutes: 18 * 60 + 23, stats: STATS })); } catch {}
     startMission(3);
     pauseGame(); show($('hud'), false);
@@ -1067,60 +1242,150 @@ function stageShot(name) {
   }
   startMission(0);
   if (name === 'chase') {
-    // Shot 1 (round 6): late-game chase, Mission 6 Banco Lucero, wanted 4 + helicopter,
-    // brightened dusk, on the beachfront road east through Kumala Strand — the camera
-    // looks east down the Strand toward the harbour water, pier and lighthouse, with
-    // palms and traffic ahead of the car and AIR ONE whole in the frame.
+    // Shot 1 (round 8, restaged after the first take): late-game chase, Mission 6
+    // Banco Lucero, wanted 4 + helicopter — now NORTHBOUND ON THE PIER. The sand
+    // lane is not drivable (probe: buildings reach x≈188 all along it), but the
+    // pier deck (x 184–208, y 1.0) is open water-side road: sea fills the right of
+    // frame, sand + palms + buildings the left, the lighthouse ahead, AIR ONE big
+    // in open sky. Everything staged on the deck sits at y 1.0 (deck top).
     G.money = 19430; G.respect = 290; G.day = 9; G.minutes = 18 * 60 + 40;
     Object.assign(STATS, { carsStolen: 41, copsEscaped: 12, kmDriven: 48.2, takenOut: 23, geckos: 12, missionsDone: 5 });
     startMission(5); G.missionStage = 1; G.hasPackage = true; G.missionTimer = 120; updateObjective();
-    const car = spawnCar(165, 45, Math.PI / 2, 0xc0392b, { name: 'VIREO GT', condition: 84 });
-    player.pos.set(165, 0, 45); enterCar(car); G.wanted = 4; car.speed = 14;
+    const car = spawnCar(196, 60, Math.PI, 0xc0392b, { name: 'VIREO GT', condition: 84 });
+    car.group.position.y = 1.0;
+    player.pos.set(196, 1.0, 60); enterCar(car); G.wanted = 4; car.speed = 14;
     for (let i = 0; i < 4; i++) {
       const pc = spawnPoliceCar();
-      pc.group.position.set([145, 155, 178, 150][i], 0, [45, 52, 40, 38][i]); pc.speed = 16;
+      pc.group.position.set([198, 193, 202, 196][i], 1.0, [30, 45, 15, 55][i]); pc.speed = 16;
     }
-    G.camYaw = Math.PI / 2;
-    clusterNear(165, 45);
+    G.camYaw = Math.PI;
+    // pier traffic: parked cars on the deck ahead of the player (no AI loops —
+    // the loops would drive them off the pier), + walkers and umbrellas on the deck
+    [[196, 5], [193, -12], [199, 22], [190, 52]].forEach(([tx, tz], i) => {
+      const c = spawnCar(tx, tz, Math.PI, [0x2980b9, 0x27ae60, 0xf1c40f, 0x8e44ad][i], {});
+      c.group.position.y = 1.0;
+    });
+    peds.slice(0, 6).forEach((p, i) => {
+      p.group.position.set([199, 203, 197, 201, 198, 202][i], 1.0, [28, 48, 8, -2, 40, 18][i]);
+      p.tx = p.group.position.x; p.tz = p.group.position.z; p.state = 'walk';
+    });
+    const umbrellaCols = [0xff2d78, 0x00e5ff, 0xffd23d];
+    [[203, 25], [205, 50], [202, 0]].forEach(([ux, uz], i) => {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.6, 6), new THREE.MeshLambertMaterial({ color: 0x8a7a5a }));
+      pole.position.set(ux, 2.3, uz); scene.add(pole);
+      const top = new THREE.Mesh(new THREE.ConeGeometry(2.2, 1.0, 8), new THREE.MeshLambertMaterial({ color: umbrellaCols[i] }));
+      top.position.set(ux, 4.0, uz); scene.add(top);
+    });
+    // snap the chase camera behind the car on the deck (no lerp-in drift) —
+    // 12 m back / 5.0 high, matching the wider chase cam in updateCamera
+    camera.position.set(196, 5.0, 72);
+    camera.lookAt(196, 2.6, 60);
   } else if (name === 'shootout') {
-    // Shot 2 (round 6): a real daytime shootout — Mission 7 The Lamplighter on a
-    // bright city street in Marina Row: 6 guards with red markers, one already down,
-    // a burning van, fleeing pedestrians, tracer fire. The objective is a shoot
-    // order ("Clear out the guards"), not a delivery.
-    G.money = 6420; G.respect = 140; G.day = 4; G.minutes = 13 * 60 + 20;
+    // Shot 2 (round 8): a real daytime shootout — Mission 7 The Lamplighter on a
+    // bright city street in Marina Row, now with END-GAME state (DAY 11, $46,000,
+    // UNDERBOSS — the state that fits the final mission), the player WHOLE in frame
+    // from behind aiming (camera pulled back + lowered + snapped, pistol in hand),
+    // a live GUARDS 6/10 counter, and a burning VAN that reads as a van.
+    G.money = 46000; G.respect = 460; G.day = 11; G.minutes = 10 * 60 + 22;
+    Object.assign(STATS, { carsStolen: 41, copsEscaped: 12, kmDriven: 48.2, takenOut: 23, geckos: 12, missionsDone: 6, bestWanted: 5 });
     startMission(6); updateObjective();
-    $('objective-title').textContent = 'CH.5 STORM SURGE · MISSION 7/7 — THE LAMPLIGHTER · $50,000';
+    $('objective-title').textContent = 'CH.5 STORM SURGE · MISSION 7/10 — THE LAMPLIGHTER · $50,000';
     $('objective-text').textContent = 'Clear out the guards (6 left) — the Combine\'s crew holds this street.';
     $('objective-next').textContent = 'NEXT Deliver the files to the harbor pier';
     player.pos.set(20, 0, 95);
     player.heading = Math.atan2(55 - player.pos.x, 95 - player.pos.z); // face east down the street
     player.mesh.position.copy(player.pos); player.mesh.rotation.y = player.heading;
-    G.camYaw = player.heading; G.ammo = 12;
-    // 6 guards with red markers ahead of the player
+    G.camYaw = player.heading; G.camPitch = 0.25; G.camDist = 6.5; G.ammo = 12;
+    // snap the camera now: the player must be WHOLE in frame from behind, aiming —
+    // no slow lerp-in from the default orbit while the shot is taken.
+    // Round 8 fix: 6.5 m back (was 12 m — the player read as a speck at 12 m).
+    camera.position.set(
+      player.pos.x - Math.sin(G.camYaw) * Math.cos(G.camPitch) * G.camDist,
+      2 + Math.sin(G.camPitch) * G.camDist,
+      player.pos.z - Math.cos(G.camYaw) * Math.cos(G.camPitch) * G.camDist);
+    camera.lookAt(player.pos.x, 1.6, player.pos.z);
+    // 6 guards with red markers ahead of the player + 4 already down = 10 total,
+    // so the live counter reads GUARDS 6/10
     const guardPos = [[38, 82], [48, 108], [55, 88], [70, 100], [44, 98], [78, 86]];
     for (const [gx, gz] of guardPos) spawnCop(gx, gz, true);
-    // one guard already down, one tracer line in the air (frozen firefight)
-    const down = spawnCop(62, 108, true); down.down = true; down.downT = 0; down.group.rotation.x = Math.PI / 2;
+    for (const [gx, gz] of [[62, 108], [58, 95], [66, 90], [50, 112]]) {
+      const downG = spawnCop(gx, gz, true); downG.down = true; downG.downT = 0; downG.group.rotation.x = Math.PI / 2;
+    }
+    // one tracer line in the air (frozen firefight), from the player's pistol
     const geo = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(player.pos.x, 1.6, player.pos.z),
       new THREE.Vector3(38, 1.4, 82),
     ]);
     const tr = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffe9a8 })); scene.add(tr);
-    // burning van: dark wreck + big flame cones + smoke column, close to the player
-    const van = spawnCar(48, 92, Math.PI / 2, 0x14141a, { name: 'BURNING VAN' });
-    van.group.position.y = 0;
-    const flame = new THREE.Mesh(new THREE.ConeGeometry(1.9, 4.6, 8), new THREE.MeshBasicMaterial({ color: 0xff7a00 }));
-    flame.position.set(48, 3.4, 92); scene.add(flame);
-    const flame2 = new THREE.Mesh(new THREE.ConeGeometry(1.2, 3.0, 8), new THREE.MeshBasicMaterial({ color: 0xffd23d }));
-    flame2.position.set(48, 3.0, 92); scene.add(flame2);
-    const smoke = new THREE.Mesh(new THREE.SphereGeometry(2.4, 8, 6), new THREE.MeshBasicMaterial({ color: 0x1c1c20, transparent: true, opacity: 0.75 }));
-    smoke.position.set(48, 6.4, 92); scene.add(smoke);
-    const smoke2 = new THREE.Mesh(new THREE.SphereGeometry(1.8, 8, 6), new THREE.MeshBasicMaterial({ color: 0x2a2a30, transparent: true, opacity: 0.55 }));
-    smoke2.position.set(48, 8.6, 92); scene.add(smoke2);
+    // burning van: a real van shape (tall cargo box on the car body) with flames
+    // licking from the rear and a smoke column — not just a fire cone.
+    // Round 8 fix: parked 16 m ahead of the player (was 28 m — too small and
+    // hidden behind the GUARDS pill), so the van + flames read at a glance.
+    const van = spawnCar(36, 93, Math.PI / 2, 0x14141a, { name: 'BURNING VAN' });
+    const cargo = new THREE.Mesh(new THREE.BoxGeometry(2.3, 1.7, 2.8), new THREE.MeshLambertMaterial({ color: 0x2a2a30 }));
+    cargo.position.set(0, 1.6, -0.7); van.group.add(cargo);
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(1.4, 3.4, 8), new THREE.MeshBasicMaterial({ color: 0xff7a00 }));
+    flame.position.set(0, 2.9, -1.6); van.group.add(flame);
+    const flame2 = new THREE.Mesh(new THREE.ConeGeometry(0.9, 2.2, 8), new THREE.MeshBasicMaterial({ color: 0xffd23d }));
+    flame2.position.set(0, 2.5, -1.6); van.group.add(flame2);
+    const smoke = new THREE.Mesh(new THREE.SphereGeometry(2.2, 8, 6), new THREE.MeshBasicMaterial({ color: 0x1c1c20, transparent: true, opacity: 0.75 }));
+    smoke.position.set(0, 5.0, -1.2); van.group.add(smoke);
+    const smoke2 = new THREE.Mesh(new THREE.SphereGeometry(1.6, 8, 6), new THREE.MeshBasicMaterial({ color: 0x2a2a30, transparent: true, opacity: 0.55 }));
+    smoke2.position.set(0, 6.8, -1.2); van.group.add(smoke2);
     // peds fleeing the gunfire
     peds.slice(0, 8).forEach(p => { p.state = 'flee'; p.fleeT = 5; });
     clusterNear(20, 95);
+    // keep the burning van readable: no other car may sit in the firing lane
+    // between the player and the van — push lane cars EAST, past the van, so they
+    // read as depth behind it instead of hiding it (first takes: a parked car sat
+    // on top of the van, then moved cars still blocked the sightline)
+    for (const c of cars) {
+      if (c === van) continue;
+      const cx = c.group.position.x, cz = c.group.position.z;
+      if (cx > 12 && cx < 68 && Math.abs(cz - 93) < 8) c.group.position.x = cx + 45;
+    }
+    // keep the camera lane clear: no ped between the camera and the player
+    peds.slice(0, 10).forEach((p, i) => {
+      if (dist2d(p.group.position.x, p.group.position.z, camera.position.x, camera.position.z) < 6) {
+        p.group.position.set(34 + i * 2, 0, 78 + (i % 3) * 8);
+        p.tx = p.group.position.x; p.tz = p.group.position.z;
+      }
+    });
     peds.slice(0, 8).forEach(p => { p.state = 'flee'; p.fleeT = 5; });
+  } else if (name === 'race') {
+    // Shot 4 (round 8): night street race downtown — glowing windows + streetlights,
+    // the player on the PICUDA 900 bike mid-race: CHECKPOINT 3/5, POSITION 3/4,
+    // ~290 m to the next gate. The title screen still exists in the game; it just
+    // isn't one of the 4 screenshots any more.
+    G.money = 54600; G.respect = 520; G.day = 11; G.minutes = 22 * 60 + 4;
+    Object.assign(STATS, { carsStolen: 41, copsEscaped: 12, kmDriven: 48.2, takenOut: 23, geckos: 12, missionsDone: 7, bestWanted: 4, lanterns: 9, stuntJumps: 2, racesWon: 1 });
+    player.pos.set(-105, 0, 45);
+    player.heading = Math.atan2(145 - player.pos.x, -105 - player.pos.z); // toward the next gate
+    player.mesh.position.copy(player.pos); player.mesh.rotation.y = player.heading;
+    startMission(7); updateObjective();
+    // stage the race state: 2 checkpoints done, rivals arranged so we sit 3rd
+    G.race.cp = 2;
+    G.race.rivals[0].cp = 3; G.race.rivals[0].dist = 120;
+    G.race.rivals[1].cp = 2; G.race.rivals[1].dist = 80;
+    G.race.rivals[2].cp = 1; G.race.rivals[2].dist = 200;
+    const bike = G.race.bike;
+    bike.group.position.set(-105, 0, 45);
+    bike.heading = player.heading; bike.group.rotation.y = bike.heading; bike.speed = 40;
+    player.pos.copy(bike.group.position);
+    enterCar(bike); // mounts the bike without a wanted star (isBike)
+    G.camYaw = player.heading;
+    // rivals visible on the road: one orange car up ahead, two behind us
+    G.race.rivals[0].car.group.position.set(-30, 0, -5);
+    G.race.rivals[1].car.group.position.set(-70, 0, 20);
+    G.race.rivals[2].car.group.position.set(-120, 0, 70);
+    G.race.rivals.forEach(r => { r.car.heading = player.heading; r.car.group.rotation.y = r.car.heading; });
+    // snap the chase camera behind the bike (same lerp problem as the shootout) —
+    // 6 m back / 3.0 high, matching the closer bike cam in updateCamera
+    camera.position.set(
+      bike.group.position.x - Math.sin(bike.heading) * 6, 3.0,
+      bike.group.position.z - Math.cos(bike.heading) * 6);
+    camera.lookAt(bike.group.position.x, 1.6, bike.group.position.z);
+    clusterNear(-105, 45);
   } else if (name === 'drive') {
     const car = spawnCar(-5, 45, 0, 0xc0392b, {});
     player.pos.set(-5, 0, 45); enterCar(car); G.wanted = 0; car.speed = 14;
@@ -1140,7 +1405,7 @@ function stageShot(name) {
   updateObjective();
   // the shootout shot overrides the objective text after updateObjective — restore it
   if (name === 'shootout') {
-    $('objective-title').textContent = 'CH.5 STORM SURGE · MISSION 7/7 — THE LAMPLIGHTER · $50,000';
+    $('objective-title').textContent = 'CH.5 STORM SURGE · MISSION 7/10 — THE LAMPLIGHTER · $50,000';
     $('objective-text').textContent = 'Clear out the guards (6 left) — the Combine\'s crew holds this street.';
     $('objective-next').textContent = 'NEXT Deliver the files to the harbor pier';
   }
@@ -1161,7 +1426,9 @@ function frame(now) {
   } else if (SHOT) {
     // staged scene: gentle life (traffic + peds move) but no player input / wanted logic
     updateTraffic(dt); updatePeds(dt); updateMarker(dt); updateHeli(dt);
-    if (SHOT === 'wanted' || SHOT === 'chase') updatePoliceCars(dt);
+    if (SHOT === 'wanted') updatePoliceCars(dt); // the chase shot keeps police at
+    // their staged positions (round 8: chasers converged onto the camera and one
+    // filled the foreground cut off); the legacy wanted shot still runs them
     // drive shot: keep the staged car rolling slowly down the road
     if ((SHOT === 'drive' || SHOT === 'chase') && G.car) {
       G.car.speed = SHOT === 'chase' ? 14 : 12;
@@ -1190,4 +1457,4 @@ if (SHOT) {
 }
 
 // debug handle for play-testing
-window.__game = { G, STATS, MISSIONS, player, cars, peds, cops, geckos, heli, audio, renderer, touch, IS_TOUCH, startGame, pauseGame, resumeGame, missionTarget, saveGame, loadSave, rankFor, districtAt };
+window.__game = { G, STATS, MISSIONS, RACE_CPS, racePosition, city, player, cars, peds, cops, geckos, heli, audio, renderer, camera, scene, touch, IS_TOUCH, startGame, pauseGame, resumeGame, missionTarget, saveGame, loadSave, rankFor, districtAt };
