@@ -11,6 +11,13 @@
 // big KM/H speedo + labelled HEALTH/ARMOUR/RESPECT bars + CONDITION bar, open beach
 // chase, wanted status text, 10-mission MAP (12-entry legend, PAUSED header, tab bar),
 // ammo on every weapon-wheel slot. Career numbers + VIREO GT untouched (see R8-7).
+// Round 9: race shot rebuilt for readability — "neon night" preset (city.js), hot-pink
+// PICUDA 900 with a real headlight beam + road glow, hi-vis rider with fixed limbs,
+// rivals pulled into the lane with bright rear bars + roof beacons; chase shot moved
+// OFF the pier deck ONTO the open sand (x 170) now the beach column is building-free;
+// AIR ONE offset west into the upper-left open sky so neither the district card nor
+// the dispatch panel hides it; CLEAN status gets a dark pill so it never reads as
+// clipped. Numbers + VIREO GT still untouched.
 import * as THREE from 'three';
 import { buildCity, districtAt } from './city.js';
 import { createAudio } from './audio.js';
@@ -139,11 +146,16 @@ function spawnCar(x, z, heading, color, opts = {}) {
 // Same car-shaped record so driving, camera, HUD and enter/exit all work unchanged;
 // isBike only changes top speed (40 u/s ≈ 88 KM/H on the speedo), the name, and the
 // fact that mounting the provided race bike is not a theft (no wanted star).
+// Round 9: the bike reads at night — hot-pink body + tank, a pool of light on the
+// road ahead, a bigger red taillight with a glow, and a rider in hi-vis yellow
+// leathers with a white helmet whose arms reach the bars and whose legs tuck to
+// the pegs (round 8's rider was a dark boxy silhouette with splayed block legs on
+// a near-invisible purple bike).
 function makeBikeMesh(color) {
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 2.2), new THREE.MeshLambertMaterial({ color }));
   body.position.y = 0.75; g.add(body);
-  const tank = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.35, 0.9), new THREE.MeshLambertMaterial({ color: 0x18202e }));
+  const tank = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.35, 0.9), new THREE.MeshLambertMaterial({ color }));
   tank.position.set(0, 1.05, 0.2); g.add(tank);
   const bar = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.08, 0.08), new THREE.MeshLambertMaterial({ color: 0x222226 }));
   bar.position.set(0, 1.15, 0.95); g.add(bar);
@@ -152,20 +164,36 @@ function makeBikeMesh(color) {
   for (const z of [0.85, -0.85]) {
     const w = new THREE.Mesh(wheelGeo, wheelMat); w.rotation.z = Math.PI / 2; w.position.set(0, 0.38, z); g.add(w);
   }
-  const hl = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.15, 0.1), new THREE.MeshBasicMaterial({ color: 0xfff6c8 }));
-  hl.position.set(0, 0.8, 1.12); g.add(hl);
-  // rider (Jax, teal jacket + helmet): hidden until someone mounts the bike —
-  // the race shot needs a rider on the machine, not an empty bike
+  // headlight: a bigger white lens + a pool of light on the road ahead, so the
+  // bike + the road ahead read in the dark. (Round 9 first take also had a beam
+  // cone — REMOVED: viewed from the chase camera directly behind, the cone read
+  // as a solid grey pyramid hiding the bike. The flat pool does the same job
+  // without ever blocking the bike.)
+  const hl = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.1), new THREE.MeshBasicMaterial({ color: 0xfff6c8 }));
+  hl.position.set(0, 0.85, 1.12); g.add(hl);
+  const pool = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 8), new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false }));
+  pool.rotation.x = -Math.PI / 2; pool.position.set(0, 0.07, 5); g.add(pool);
+  // taillight: a taller red bar + a small red glow, so the bike reads from behind too
+  const tl = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.1), new THREE.MeshBasicMaterial({ color: 0xff2d2d }));
+  tl.position.set(0, 0.85, -1.12); g.add(tl);
+  const tlGlow = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff2d2d, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false }));
+  tlGlow.position.set(0, 0.85, -1.2); g.add(tlGlow);
+  // rider (Jax, hi-vis yellow leathers + white helmet): hidden until someone mounts
+  // the bike — the race shot needs a rider on the machine, not an empty bike
   const rider = new THREE.Group();
-  const rTorso = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.65, 0.32), new THREE.MeshLambertMaterial({ color: 0x14b8a6 }));
-  rTorso.position.y = 1.35; rider.add(rTorso);
-  const rHead = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.36, 0.36), new THREE.MeshLambertMaterial({ color: 0x222226 }));
-  rHead.position.y = 1.85; rider.add(rHead);
+  const rTorso = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.65, 0.32), new THREE.MeshLambertMaterial({ color: 0xffd23d }));
+  rTorso.position.y = 1.32; rTorso.rotation.x = 0.28; rider.add(rTorso);
+  const rHead = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.36, 0.36), new THREE.MeshLambertMaterial({ color: 0xffffff }));
+  rHead.position.set(0, 1.82, 0.12); rider.add(rHead);
+  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.08), new THREE.MeshLambertMaterial({ color: 0x14141a }));
+  visor.position.set(0, 1.82, 0.32); rider.add(visor);
   for (const sx of [-1, 1]) {
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.55), new THREE.MeshLambertMaterial({ color: 0x14b8a6 }));
-    arm.position.set(sx * 0.3, 1.45, 0.45); arm.rotation.x = 0.5; rider.add(arm);
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.5, 0.16), new THREE.MeshLambertMaterial({ color: 0x1f2937 }));
-    leg.position.set(sx * 0.25, 0.95, 0.1); leg.rotation.x = 0.9; rider.add(leg);
+    // arms reach forward-down to the handlebars (bars at y 1.15, z 0.95)
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.6), new THREE.MeshLambertMaterial({ color: 0xffd23d }));
+    arm.position.set(sx * 0.3, 1.48, 0.55); arm.rotation.x = 1.05; rider.add(arm);
+    // legs tuck to the pegs: thigh forward, shin down (one angled box each side)
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.55, 0.17), new THREE.MeshLambertMaterial({ color: 0x1f2937 }));
+    leg.position.set(sx * 0.24, 0.9, 0.3); leg.rotation.x = 1.15; rider.add(leg);
   }
   rider.visible = false; g.add(rider);
   return { group: g, rider };
@@ -223,12 +251,18 @@ function updateHeli(dt) {
   // sits in the chase camera instead of only the spotlight cone.
   // Round 8: in the chase shot the heli comes closer (14 m, y 7.5) and 1.4x bigger,
   // so it reads as an airframe in open sky, not a dark speck.
+  // Round 9: in the chase shot the heli is offset 15 m WEST (over the beach,
+  // upper-left open sky), so the whole airframe sits clear of BOTH the centred
+  // district title card and the top-right dispatch panel — the first take's
+  // east offset (+14) parked it directly behind the dispatch panel, and round 8's
+  // centred heli sat half-hidden behind the district card. Flown at y 9, 1.4x.
   const hx = G.inCar && G.car ? Math.sin(G.car.heading) : Math.sin(player.heading);
   const hz = G.inCar && G.car ? Math.cos(G.car.heading) : Math.cos(player.heading);
   const ahead = SHOT === 'chase' ? 14 : 20;
-  const alt = SHOT === 'chase' ? 7.5 : 9;
+  const alt = 9;
+  const lat = SHOT === 'chase' ? -15 : 0; // west, upper-left open sky
   heli.group.scale.setScalar(SHOT === 'chase' ? 1.4 : 1);
-  heli.group.position.set(player.pos.x + hx * ahead, alt, player.pos.z + hz * ahead);
+  heli.group.position.set(player.pos.x + hx * ahead + lat, alt, player.pos.z + hz * ahead);
   heli.rotor.rotation.y += dt * 14;
 }
 
@@ -383,8 +417,10 @@ function startMission(i) {
   if (m0.stages[0].timed) G.missionTimer = m0.stages[0].timed; // the race is timed from stage 0
   if (m0.stages[0].action === 'race') {
     // Round 8: the provided PICUDA 900 bike + 3 rivals line up next to the player.
+    // Round 9: the bike is hot pink (0xff2d78) — the round 8 dark purple (0x8e44ad)
+    // was near-invisible at night; the name PICUDA 900 is unchanged.
     G.race = { cp: 0, bike: null, rivals: [] };
-    G.race.bike = spawnBike(player.pos.x + 2, player.pos.z, player.heading, 0x8e44ad);
+    G.race.bike = spawnBike(player.pos.x + 2, player.pos.z, player.heading, 0xff2d78);
     const rivalCols = [0xe67e22, 0x2980b9, 0xf1c40f];
     const rivalSpeeds = [10.5, 11.5, 12.5];
     for (let k = 0; k < 3; k++) {
@@ -1059,6 +1095,9 @@ function updateCamera(dt) {
     // Round 8: the race bike gets a closer chase cam (6 m back, 3.0 high) so the
     // small bike reads in frame; the pier chase gets a wider one (12 m / 5.0 m)
     // so more sea + sky fits; cars keep the usual 10 m / 4.2 m.
+    // Round 9: the bike cam went to 7 m / 3.4 m in the first take to fit the rivals,
+    // but the rider read too small — back to 6 m / 3.0 m (the rivals sit 12–55 m
+    // ahead, so they still fit with headroom; the hero bike is ~17% bigger).
     const bikeCam = SHOT === 'race' && G.car.isBike;
     const chaseCam = SHOT === 'chase';
     const dist = bikeCam ? 6 : chaseCam ? 12 : 10, height = bikeCam ? 3.0 : chaseCam ? 5.0 : 4.2;
@@ -1242,44 +1281,46 @@ function stageShot(name) {
   }
   startMission(0);
   if (name === 'chase') {
-    // Shot 1 (round 8, restaged after the first take): late-game chase, Mission 6
-    // Banco Lucero, wanted 4 + helicopter — now NORTHBOUND ON THE PIER. The sand
-    // lane is not drivable (probe: buildings reach x≈188 all along it), but the
-    // pier deck (x 184–208, y 1.0) is open water-side road: sea fills the right of
-    // frame, sand + palms + buildings the left, the lighthouse ahead, AIR ONE big
-    // in open sky. Everything staged on the deck sits at y 1.0 (deck top).
+    // Shot 1 (round 9, restaged after the second take): late-game chase, Mission 6
+    // Banco Lucero, wanted 4 + helicopter — now NORTHBOUND ON THE OPEN SAND at
+    // x 170. Round 8 staged on the pier deck (x 196): the deck filled the
+    // foreground, a red container blocked the lane, and the sand was a thin strip
+    // because towers reached x ≈ 178–182. Round 9 removes those towers (city.js:
+    // the whole x 150–190 column is beach now) and widens the sand to x 150–208,
+    // so the chase drives on sand itself: sand + palms + umbrellas fill the left
+    // of frame, the pier + containers + sea fill the right, the lighthouse stands
+    // ahead, AIR ONE sits big in open sky over the sea (offset east, clear of the
+    // district card). Everything staged sits at y 0 (sand level, no deck).
     G.money = 19430; G.respect = 290; G.day = 9; G.minutes = 18 * 60 + 40;
     Object.assign(STATS, { carsStolen: 41, copsEscaped: 12, kmDriven: 48.2, takenOut: 23, geckos: 12, missionsDone: 5 });
     startMission(5); G.missionStage = 1; G.hasPackage = true; G.missionTimer = 120; updateObjective();
-    const car = spawnCar(196, 60, Math.PI, 0xc0392b, { name: 'VIREO GT', condition: 84 });
-    car.group.position.y = 1.0;
-    player.pos.set(196, 1.0, 60); enterCar(car); G.wanted = 4; car.speed = 14;
+    const car = spawnCar(170, 60, Math.PI, 0xc0392b, { name: 'VIREO GT', condition: 84 });
+    player.pos.set(170, 0, 60); enterCar(car); G.wanted = 4; car.speed = 14;
     for (let i = 0; i < 4; i++) {
       const pc = spawnPoliceCar();
-      pc.group.position.set([198, 193, 202, 196][i], 1.0, [30, 45, 15, 55][i]); pc.speed = 16;
+      pc.group.position.set([168, 173, 166, 174][i], 0, [30, 45, 15, 55][i]); pc.speed = 16;
     }
     G.camYaw = Math.PI;
-    // pier traffic: parked cars on the deck ahead of the player (no AI loops —
-    // the loops would drive them off the pier), + walkers and umbrellas on the deck
-    [[196, 5], [193, -12], [199, 22], [190, 52]].forEach(([tx, tz], i) => {
-      const c = spawnCar(tx, tz, Math.PI, [0x2980b9, 0x27ae60, 0xf1c40f, 0x8e44ad][i], {});
-      c.group.position.y = 1.0;
+    // beach traffic: cars ahead of the player on the sand lane (no AI loops —
+    // the loops would drive them off the beach), + walkers and umbrellas on the sand
+    [[170, 5], [166, -12], [174, 22], [168, 52]].forEach(([tx, tz], i) => {
+      spawnCar(tx, tz, Math.PI, [0x2980b9, 0x27ae60, 0xf1c40f, 0x8e44ad][i], {});
     });
     peds.slice(0, 6).forEach((p, i) => {
-      p.group.position.set([199, 203, 197, 201, 198, 202][i], 1.0, [28, 48, 8, -2, 40, 18][i]);
+      p.group.position.set([172, 176, 168, 174, 170, 178][i], 0, [28, 48, 8, 40, 18, 52][i]);
       p.tx = p.group.position.x; p.tz = p.group.position.z; p.state = 'walk';
     });
     const umbrellaCols = [0xff2d78, 0x00e5ff, 0xffd23d];
-    [[203, 25], [205, 50], [202, 0]].forEach(([ux, uz], i) => {
+    [[178, 25], [162, 50], [180, 0]].forEach(([ux, uz], i) => {
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.6, 6), new THREE.MeshLambertMaterial({ color: 0x8a7a5a }));
       pole.position.set(ux, 2.3, uz); scene.add(pole);
       const top = new THREE.Mesh(new THREE.ConeGeometry(2.2, 1.0, 8), new THREE.MeshLambertMaterial({ color: umbrellaCols[i] }));
       top.position.set(ux, 4.0, uz); scene.add(top);
     });
-    // snap the chase camera behind the car on the deck (no lerp-in drift) —
+    // snap the chase camera behind the car on the sand (no lerp-in drift) —
     // 12 m back / 5.0 high, matching the wider chase cam in updateCamera
-    camera.position.set(196, 5.0, 72);
-    camera.lookAt(196, 2.6, 60);
+    camera.position.set(170, 5.0, 72);
+    camera.lookAt(170, 2.6, 60);
   } else if (name === 'shootout') {
     // Shot 2 (round 8): a real daytime shootout — Mission 7 The Lamplighter on a
     // bright city street in Marina Row, now with END-GAME state (DAY 11, $46,000,
@@ -1353,8 +1394,10 @@ function stageShot(name) {
     });
     peds.slice(0, 8).forEach(p => { p.state = 'flee'; p.fleeT = 5; });
   } else if (name === 'race') {
-    // Shot 4 (round 8): night street race downtown — glowing windows + streetlights,
-    // the player on the PICUDA 900 bike mid-race: CHECKPOINT 3/5, POSITION 3/4,
+    // Shot 4 (round 9): night street race downtown — "neon night" now (city.js:
+    // much brighter ambient/dir light + glowing windows + streetlights, so the
+    // road, the bike and the rivals read instead of going near-black), the player
+    // on the hot-pink PICUDA 900 bike mid-race: CHECKPOINT 3/5, POSITION 3/4,
     // ~290 m to the next gate. The title screen still exists in the game; it just
     // isn't one of the 4 screenshots any more.
     G.money = 54600; G.respect = 520; G.day = 11; G.minutes = 22 * 60 + 4;
@@ -1374,13 +1417,25 @@ function stageShot(name) {
     player.pos.copy(bike.group.position);
     enterCar(bike); // mounts the bike without a wanted star (isBike)
     G.camYaw = player.heading;
-    // rivals visible on the road: one orange car up ahead, two behind us
-    G.race.rivals[0].car.group.position.set(-30, 0, -5);
-    G.race.rivals[1].car.group.position.set(-70, 0, 20);
-    G.race.rivals[2].car.group.position.set(-120, 0, 70);
-    G.race.rivals.forEach(r => { r.car.heading = player.heading; r.car.group.rotation.y = r.car.heading; });
+    // rivals visible on the road, IN the lane ahead of us — round 8 parked the
+    // leader ~110 m away (a yellow blob) and one rival behind the camera. Now
+    // the pack surrounds the bike: leader 55 m ahead on the road, second 14 m
+    // ahead left, third 12 m ahead right, each with a tall red rear bar + a roof
+    // beacon in its own colour so the three cars read as three distinct rivals,
+    // not blobs. (The first leader spot, 35 m out, sat inside a tower footprint —
+    // probed: collider x −88…−63, z 19…31 — so the leader sits on the road instead.)
+    G.race.rivals[0].car.group.position.set(-58, 0, 17);
+    G.race.rivals[1].car.group.position.set(-91, 0, 41);
+    G.race.rivals[2].car.group.position.set(-97, 0, 35);
+    G.race.rivals.forEach(r => {
+      r.car.heading = player.heading; r.car.group.rotation.y = r.car.heading;
+      const rearBar = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.35, 0.12), new THREE.MeshBasicMaterial({ color: 0xff2d2d }));
+      rearBar.position.set(0, 0.62, -2.14); r.car.group.add(rearBar);
+      const beacon = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.22, 0.5), new THREE.MeshBasicMaterial({ color: r.car.color }));
+      beacon.position.set(0, 1.5, -0.2); r.car.group.add(beacon);
+    });
     // snap the chase camera behind the bike (same lerp problem as the shootout) —
-    // 6 m back / 3.0 high, matching the closer bike cam in updateCamera
+    // 6 m back / 3.0 high, matching the bike cam in updateCamera
     camera.position.set(
       bike.group.position.x - Math.sin(bike.heading) * 6, 3.0,
       bike.group.position.z - Math.cos(bike.heading) * 6);

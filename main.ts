@@ -14,6 +14,9 @@
 // Serve it locally with `node serve.ts`, then open http://localhost:8080.
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+// Round 9: race shot rebuilt for readability (neon-night city, hot-pink PICUDA 900
+// with headlight beam, hi-vis rider, rivals in the lane) + chase shot moved onto the
+// open sand; career numbers + VIREO GT unchanged.
 
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

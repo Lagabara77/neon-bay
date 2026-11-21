@@ -17,10 +17,13 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1030; fon
 #wanted { margin-top: 4px; font-size: 26px; letter-spacing: 2px; color: #ffd23d; text-shadow: 0 0 8px #000, 0 0 14px #f80; min-height: 30px; }
 #wanted .dim { color: rgba(255,255,255,.22); text-shadow: none; }
 /* round 8: wanted status line under the stars (IN SIGHT / SEARCHING / CLEAN) */
-#wanted-status { font-size: 12px; font-weight: 800; letter-spacing: 3px; text-shadow: 0 1px 2px #000; margin-top: 1px; }
+/* round 9: the status sits on a dark pill with padding — round 8's bare grey
+   CLEAN text sat hard against the frame edge over a busy facade and read as
+   clipped; the pill + brighter grey keep every state legible on any backdrop */
+#wanted-status { display: inline-block; font-size: 12px; font-weight: 800; letter-spacing: 3px; text-shadow: 0 1px 2px #000; margin-top: 4px; background: rgba(10,5,30,.65); padding: 3px 10px; border-radius: 3px; }
 #wanted-status.sight { color: #ff5c5c; }
 #wanted-status.searching { color: #ffb13d; }
-#wanted-status.clean { color: rgba(255,255,255,.55); }
+#wanted-status.clean { color: #d8d2ea; }
 #objective { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); background: rgba(10,5,30,.72); border: 1px solid #ff2d78; border-left: 5px solid #ff2d78; padding: 8px 16px; border-radius: 4px; max-width: 520px; text-align: center; }
 #objective-title { display: block; font-weight: 800; color: #ffb3d1; letter-spacing: 1px; font-size: 13px; text-transform: uppercase; }
 #objective-text { font-size: 15px; }
